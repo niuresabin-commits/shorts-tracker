@@ -689,7 +689,7 @@ function renderSync(){
   const a=document.activeElement;if(a&&c.contains(a)&&a.tagName==="INPUT")return;
   const ev=$("ae")?$("ae").value:"",pv=$("ap")?$("ap").value:"",msg=$("amsg")?$("amsg").innerHTML:"";
   if(!SYNC_ON){c.innerHTML='<p class="sm">Sync is not set up yet, so your data is saved on this phone only. Use "Save a backup file" below now and then. Ask Claude to finish the sync setup when you are ready.</p>';return}
-  if(!AUTH){c.innerHTML='<p class="sm mu">Sign in to keep your data safe in the cloud and use the tracker on more than one device. Use the same email and password everywhere.</p><label class="fld"><span>Email</span><input id="ae" type="email" autocomplete="email" autocapitalize="off" inputmode="email"></label><label class="fld"><span>Password (8+ characters)</span><input id="ap" type="password" autocomplete="current-password"></label><div id="amsg" class="sm"></div><div class="g2"><button class="btn" data-a="signin">Sign in</button><button class="btn2" data-a="signup">Create account</button></div><p class="sm mu" id="syncst"></p>';$("ae").value=ev;$("ap").value=pv;$("amsg").innerHTML=msg;setSync(syncMode);return}
+  if(!AUTH){c.innerHTML='<p class="sm mu">Sign in to keep your data safe in the cloud and use the tracker on more than one device. Use the same email and password everywhere.</p><label class="fld"><span>Email</span><input id="ae" type="email" autocomplete="email" autocapitalize="off" inputmode="email"></label><label class="fld"><span>Password (8+ characters)</span><input id="ap" type="password" autocomplete="current-password"></label><button type="button" class="link" data-a="showpw" style="text-align:left">Show password</button><div id="amsg" class="sm"></div><div class="g2"><button class="btn" data-a="signin">Sign in</button><button class="btn2" data-a="signup">Create account</button></div><p class="sm mu" id="syncst"></p>';$("ae").value=ev;$("ap").value=pv;$("amsg").innerHTML=msg;setSync(syncMode);return}
   c.innerHTML='<div><div class="eyebrow">Signed in</div><b>'+esc(AUTH.email||"")+'</b></div><p class="sm" id="syncst"></p><div class="g2"><button class="btn2" data-a="syncnow">Sync now</button><button class="btn2" data-a="signout">Sign out</button></div>';
   setSync(syncMode);
 }
@@ -791,6 +791,7 @@ document.addEventListener("click",e=>{
   else if(a==="hdw"){const h=D.habits.find(x=>x.id===id),d=+t.dataset.d;if(!h)return;const i=h.dw.indexOf(d);if(i>=0){if(h.dw.length>1)h.dw.splice(i,1)}else h.dw.push(d);touchMeta();persist();renderMore()}
   else if(a==="hdel")confirmTap(t,"Tap again to delete",()=>{D.habits=D.habits.filter(h=>h.id!==id);touchMeta();persist();renderMore()});
   /* account */
+  else if(a==="showpw"){const i=$("ap"),s=i.type==="password";i.type=s?"text":"password";t.textContent=s?"Hide password":"Show password"}
   else if(a==="signin"||a==="signup"){
     const em=$("ae").value.trim(),pw=$("ap").value,m=$("amsg");
     if(!em||pw.length<8){m.innerHTML='<span class="err">Enter your email and a password of 8 or more characters.</span>';return}
@@ -798,7 +799,7 @@ document.addEventListener("click",e=>{
     authCall(a==="signup"?"up":"in",em,pw).then(r=>{
       if(r==="confirm"){m.innerHTML="Account created. Check your email and tap the confirmation link, then come back and sign in.";return}
       toast("Signed in");renderSync();syncNow();
-    }).catch(er=>{m.innerHTML='<span class="err">'+esc(er.message||"Could not sign in")+'</span>'}).finally(()=>{t.disabled=false});
+    }).catch(er=>{m.innerHTML='<span class="err">'+esc(authMsg(er))+'</span>'}).finally(()=>{t.disabled=false});
   }
   else if(a==="signout"){AUTH=null;saveAuth();setSync("signedout");renderSync();toast("Signed out. Your data stays on this phone.")}
   else if(a==="syncnow"){syncNow().then(()=>toast(syncMode==="synced"?"Synced":"Sync problem. Saved on this phone."))}
@@ -807,6 +808,15 @@ document.addEventListener("click",e=>{
   else if(a==="wipeno")$("wipex").innerHTML="";
   else if(a==="wipeok")wipeAll();
 });
+function authMsg(er){
+  const m=(er&&er.message||"").toLowerCase();
+  if(m.indexOf("invalid login")>=0)return"Wrong email or password. If you already have an account, use Sign in (not Create account) with the same email and password as your other devices. Tap Show password to check it.";
+  if(m.indexOf("already registered")>=0||m.indexOf("already been registered")>=0)return"That email already has an account. Tap Sign in instead.";
+  if(m.indexOf("signup")>=0||m.indexOf("sign up")>=0||m.indexOf("signups")>=0)return"Creating new accounts is turned off. If you already have an account, tap Sign in.";
+  if(m.indexOf("not confirmed")>=0)return"Open the confirmation email and tap its link, then come back and tap Sign in.";
+  if(m.indexOf("failed to fetch")>=0||m.indexOf("network")>=0)return"No connection. Check your internet and try again.";
+  return er&&er.message?er.message:"Could not sign in. Try again.";
+}
 function wipeAll(){
   const t=Date.now(),keys=new Set(Object.keys(D.u));REMOTE.forEach(id=>{if(validId(id))keys.add(ukeyOf(id))});
   D=norm(null);D.u={};keys.forEach(k=>D.u[k]=t);D.u.meta=t;D.u.clips=t;
