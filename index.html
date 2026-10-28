@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shorts Tracker</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Daily habits, Shorts pipeline and work hours, tracked against your own past.">
+<meta name="theme-color" content="#EDF0F6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#080C16" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Shorts">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12.4 2.5c.4 3.2-1.4 4.8-3 6.9-1.4 1.8-2.1 3.2-2.1 5A5.1 5.1 0 0 0 12.4 20a5.1 5.1 0 0 0 5.1-5.2c0-1.7-.8-3.1-1.7-4.2-.3 1.1-.9 1.8-1.7 2.1.7-3-.3-6.6-1.7-10.2z"/></symbol>
+  <symbol id="i-today" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.5"/></symbol>
+  <symbol id="i-time" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4.5l3 1.8M9.5 2.5h5"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+  <symbol id="i-log" viewBox="0 0 24 24"><rect x="4" y="3.5" width="16" height="17" rx="3.5"/><path d="M12 8.5v7M8.5 12h7"/></symbol>
+  <symbol id="i-prog" viewBox="0 0 24 24"><path d="M4 4.5V19.5H20"/><path d="M8 15l3.5-4.2 3 2.4L19 7.5"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18.5" cy="12" r="1.6"/></symbol>
+  <symbol id="i-chk" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5z"/></symbol>
+</svg>
+
+<div class="app">
+  <header class="hd">
+    <div><div class="eyebrow" id="hphase"></div><h1 id="hdate"></h1></div>
+    <div class="hr">
+      <button class="sync" id="sync" data-a="gosync" aria-label="Sync status"></button>
+      <div class="streak" id="hs" aria-label="Current streak"><svg viewBox="0 0 24 24"><use href="#i-flame"/></svg><span id="fl" class="num">0</span></div>
+    </div>
+  </header>
+
+  <!-- TODAY -->
+  <section id="v-today" class="view on">
+    <div class="card hero">
+      <div class="ringw" id="ringw"></div>
+      <div>
+        <div class="eyebrow" id="dayn"></div>
+        <div class="lvn" id="lvn"></div>
+        <div class="xpb"><i id="xpf"></i></div>
+        <div class="mu sm num" id="xpt" style="margin-top:7px"></div>
+      </div>
+    </div>
+    <p class="msg" id="msg"></p>
+    <p class="focus" id="focus"></p>
+
+    <div class="card scard" id="scard">
+      <div class="sbig">
+        <div class="sflame" id="sfl"></div>
+        <div class="stxt"><div class="snum" id="snum">0</div><div class="slab">day streak</div></div>
+        <div class="sbest"><div class="slab">Best</div><b id="sbest"></b></div>
+      </div>
+      <p class="sm" id="ssub" style="font-weight:600"></p>
+      <div><div class="smb"><i id="smf"></i></div><div class="mu sm num" id="smt" style="margin-top:6px"></div></div>
+      <div class="wkh"><h3 class="eyebrow" style="color:var(--ink)">This week</h3><span class="mu sm num" id="wkc"></span></div>
+      <div class="pips" id="pips" style="margin:0"></div>
+      <button class="btn2 full" id="restb" data-a="rest"></button>
+    </div>
+
+    <div id="tm1"></div>
+    <div id="due"></div>
+
+    <h2 class="sec">Your 5 non-negotiables</h2>
+    <div class="card tasks" id="core"></div>
+
+    <div id="hab"></div>
+
+    <h2 class="sec">Clips</h2>
+    <div id="tclip"></div>
+    <div class="card form">
+      <div class="eyebrow">Found a good one? Save it now</div>
+      <input id="q1" placeholder="Paste a YouTube link" aria-label="YouTube link" inputmode="url" autocapitalize="off" autocorrect="off">
+      <input id="q2" placeholder="What is it? e.g. Joker stairs" aria-label="Clip label">
+      <div id="qw"></div>
+      <button class="btn2 full pri" data-a="clipadd" data-l="q1" data-n="q2" data-o="" data-w="qw">Save clip</button>
+    </div>
+
+    <h2 class="sec">College days</h2>
+    <div class="card" id="coll"></div>
+
+    <div id="sunday"></div>
+
+    <h2 class="sec">Extra credit</h2>
+    <div class="card">
+      <div class="chips" id="sug"></div>
+      <div id="xl"></div>
+      <div class="g2" style="grid-template-columns:minmax(0,3fr) minmax(0,1fr);margin-top:12px">
+        <input id="xt" placeholder="Something else you did" aria-label="Extra credit">
+        <select id="xv" aria-label="Bonus XP"><option value="5">+5</option><option value="10">+10</option><option value="20">+20</option></select>
+      </div>
+      <button class="btn2 full" id="xa" data-a="xadd" style="margin-top:10px">Add extra</button>
+    </div>
+  </section>
+
+  <!-- TIME -->
+  <section id="v-time" class="view">
+    <h2 class="sec">Work timer</h2>
+    <p class="lead">Press Start when you begin real work and Finish when you stop. Pause for breaks. Only the time you track counts.</p>
+    <div id="tm2"></div>
+
+    <form class="card form" id="fin" autocomplete="off" hidden>
+      <div><div class="eyebrow">Finish session</div><b id="fint" style="font-size:20px"></b></div>
+      <label class="fld"><span>Category</span><select id="f1"></select></label>
+      <label class="fld"><span>What did you work on? (optional)</span><input id="f2" placeholder="e.g. Edited 2 Shorts"></label>
+      <label class="fld"><span>Stopped at (change it if you stopped earlier)</span><input id="f3" type="time"></label>
+      <div class="err" id="ferr" role="alert"></div>
+      <button class="btn" type="submit">Save session</button>
+      <div class="row"><button class="link" type="button" data-a="fresume">Resume timer</button><button class="link bad" type="button" data-a="fdisc">Discard</button></div>
+    </form>
+
+    <h2 class="sec">This week</h2>
+    <div class="card" id="wkw"></div>
+    <h2 class="sec">By category</h2>
+    <div class="card" id="wcat"></div>
+
+    <h2 class="sec">Sessions</h2>
+    <div class="card">
+      <div class="dnav"><button class="btn2" data-a="dprev" aria-label="Previous day">‹</button><b id="dlab"></b><button class="btn2" data-a="dnext" aria-label="Next day">›</button></div>
+      <div id="sesl"></div>
+    </div>
+    <details class="card" id="sdet">
+      <summary id="sdets">Add a session by hand</summary>
+      <form class="form" id="sf" autocomplete="off" style="margin-top:12px">
+        <p class="sm mu">Forgot to start the timer? Add the time here. It is marked "added by hand" so your tracked hours stay honest.</p>
+        <label class="fld"><span>Category</span><select id="s1"></select></label>
+        <label class="fld"><span>Date</span><input id="s2" type="date"></label>
+        <div class="g2">
+          <label class="fld"><span>Started</span><input id="s3" type="time"></label>
+          <label class="fld"><span>Stopped</span><input id="s4" type="time"></label>
+        </div>
+        <label class="fld"><span>Note (optional)</span><input id="s5" placeholder="What did you work on?"></label>
+        <div class="err" id="serr" role="alert"></div>
+        <button class="btn" type="submit" id="ssub">Add session</button>
+        <button class="link" type="button" data-a="scancel" id="scan" hidden>Cancel editing</button>
+      </form>
+    </details>
+  </section>
+
+  <!-- CLIPS -->
+  <section id="v-clips" class="view">
+    <h2 class="sec">Clip library</h2>
+    <p class="lead">Paste a YouTube link the moment you find a good clip. When you make a Short from it, it is marked used for you, so you never reuse one by accident.</p>
+    <div class="card form">
+      <label class="fld"><span>YouTube link</span><input id="c1" placeholder="https://youtu.be/..." inputmode="url" autocapitalize="off" autocorrect="off"></label>
+      <label class="fld"><span>What is it?</span><input id="c2" placeholder="Movie and scene, e.g. Joker stairs"></label>
+      <label class="fld"><span>Note (optional)</span><input id="c3" placeholder="Best moment, hook idea..."></label>
+      <div id="cw"></div>
+      <button class="btn" data-a="clipadd" data-l="c1" data-n="c2" data-o="c3" data-w="cw">Save clip</button>
+    </div>
+    <h2 class="sec" id="cuh">Unused clips</h2>
+    <div class="card" id="cun"></div>
+    <h2 class="sec">Already used</h2>
+    <div class="card" id="cus"></div>
+  </section>
+
+  <!-- SHORTS -->
+  <section id="v-shorts" class="view">
+    <h2 class="sec">Shorts</h2>
+    <div id="due2"></div>
+
+    <form class="card form" id="nf" autocomplete="off" hidden>
+      <div><div class="eyebrow" id="nfe">48-hour numbers</div><b id="nft" style="font-size:18px"></b></div>
+      <p class="sm mu">YouTube Studio → Content → Shorts → tap the Short → Analytics. Use the numbers as they are right now.</p>
+      <div class="g2">
+        <label class="fld"><span>Views</span><input id="n2" type="number" inputmode="numeric" min="0"></label>
+        <label class="fld"><span>Viewed % (not swiped)</span><input id="n3" type="number" inputmode="decimal" min="0" max="100"></label>
+      </div>
+      <div class="g2">
+        <label class="fld"><span>Avg view duration (sec)</span><input id="n4" type="number" inputmode="decimal" min="0"></label>
+        <label class="fld"><span>Length (sec)</span><input id="n5" type="number" inputmode="decimal" min="0"></label>
+      </div>
+      <div class="g2">
+        <label class="fld"><span>Subs gained</span><input id="n8" type="number" inputmode="numeric"></label>
+        <label class="fld"><span>Notes</span><input id="n7" placeholder="What happened?"></label>
+      </div>
+      <div class="pv num" id="npv"></div>
+      <div class="err" id="nerr" role="alert"></div>
+      <button class="btn" type="submit">Save numbers</button>
+      <button class="link" type="button" data-a="numcancel">Cancel</button>
+    </form>
+
+    <form class="card form" id="cf" autocomplete="off" hidden>
+      <div><div class="eyebrow">7-day check</div><b id="cft" style="font-size:18px"></b></div>
+      <p class="sm mu" id="cfn"></p>
+      <div class="g2">
+        <label class="fld"><span>Views now</span><input id="k1" type="number" inputmode="numeric" min="0"></label>
+        <label class="fld"><span>Viewed % now</span><input id="k2" type="number" inputmode="decimal" min="0" max="100"></label>
+      </div>
+      <label class="fld"><span>Anything you notice (optional)</span><input id="k3" placeholder="Still growing? Dropped off?"></label>
+      <div class="err" id="kerr" role="alert"></div>
+      <button class="btn" type="submit">Save check</button>
+      <div class="row"><button class="link" type="button" data-a="c7skip">Skip this check</button><button class="link" type="button" data-a="c7cancel">Cancel</button></div>
+    </form>
+
+    <h2 class="sec" id="mft">Make a Short</h2>
+    <p class="lead">Save it as soon as it is made. Set the publish date to the day it goes live. Scheduling it in YouTube for a college day? Pick that date.</p>
+    <form class="card form" id="mf" autocomplete="off">
+      <div class="rule" id="rule"></div>
+      <label class="fld"><span>Clip it comes from</span><select id="m1"></select></label>
+      <label class="fld"><span>Title or label</span><input id="m2" placeholder="e.g. Joker stairs clip"></label>
+      <label class="fld"><span>Hook (the opening line)</span><input id="m3" placeholder="e.g. He had 10 seconds to live"></label>
+      <label class="fld"><span>Variation used</span><input id="m4" placeholder="Pick one below or type your own"></label>
+      <div class="chips" id="vch"></div>
+      <label class="fld"><span>Publish date</span><input id="m5" type="date"></label>
+      <div class="err" id="merr" role="alert"></div>
+      <button class="btn" type="submit" id="msub">Save Short</button>
+      <button class="link" type="button" data-a="mcancel" id="mcan" hidden>Cancel editing</button>
+    </form>
+
+    <h2 class="sec" id="sch">Coming up</h2>
+    <div class="card" id="sched"></div>
+    <h2 class="sec">History</h2>
+    <div class="card" id="lh"></div>
+  </section>
+
+  <!-- PROGRESS -->
+  <section id="v-prog" class="view">
+    <div class="seg" role="tablist"><button data-a="pseg" data-s="stats" class="on">Stats</button><button data-a="pseg" data-s="year">Year</button></div>
+
+    <div id="pstats" class="view on" style="gap:14px">
+      <h2 class="sec">The 1,000-view floor</h2>
+      <div class="card" id="floor"></div>
+      <h2 class="sec">Week by week</h2>
+      <div class="card"><div class="tiles" id="kp"></div></div>
+      <h2 class="sec">Views per Short</h2>
+      <div class="card" id="c2"></div>
+      <h2 class="sec">You then, you now</h2>
+      <div class="card" id="then"></div>
+      <h2 class="sec">What's working</h2>
+      <div class="card" id="tr"></div>
+      <h2 class="sec">Habits</h2>
+      <div class="card" id="hstat"></div>
+      <h2 class="sec">XP, last 14 days</h2>
+      <div class="card" id="c1"></div>
+      <h2 class="sec">Personal bests</h2>
+      <div class="card" id="pb"></div>
+    </div>
+
+    <div id="pyear" class="view" style="gap:14px">
+      <h2 class="sec">Why I'm doing this</h2>
+      <div class="card"><textarea id="why" aria-label="Why I'm doing this" style="min-height:110px"></textarea></div>
+      <h2 class="sec">Every day, one square</h2>
+      <p class="lead" id="ylead"></p>
+      <div class="card">
+        <div id="ygrid"></div>
+        <div class="legend"><span><i class="rs"></i>Rest</span><span><i></i>1–2 done</span><span><i class="l2"></i>Kept (3–4)</span><span><i class="l3"></i>Full (5)</span></div>
+      </div>
+      <div class="card" id="dayd"></div>
+      <h2 class="sec">So far</h2>
+      <div class="card"><div class="tiles" id="ytot"></div></div>
+      <h2 class="sec">Month by month</h2>
+      <div class="card tw" id="mt"></div>
+      <h2 class="sec">Day 1 vs today</h2>
+      <div class="card form" id="base">
+        <div class="g2">
+          <label class="fld"><span>Subs on day 1</span><input id="bs" type="number" inputmode="numeric"></label>
+          <label class="fld"><span>Subs now</span><input id="bn" type="number" inputmode="numeric"></label>
+        </div>
+        <label class="fld"><span>Typical views on day 1</span><input id="bt" type="number" inputmode="numeric"></label>
+        <div class="pv" id="bres"></div>
+      </div>
+      <h2 class="sec">Weekly review</h2>
+      <div class="card form">
+        <div class="eyebrow" id="rvwk"></div>
+        <label class="fld"><span>What worked this week</span><textarea id="rw"></textarea></label>
+        <label class="fld"><span>What I'll change next week</span><textarea id="rc"></textarea></label>
+        <div id="rvh"></div>
+      </div>
+      <h2 class="sec">Milestones</h2>
+      <div class="badges" id="bdg"></div>
+    </div>
+  </section>
+
+  <!-- MORE -->
+  <section id="v-more" class="view">
+    <div id="inst"></div>
+
+    <h2 class="sec">Sync and account</h2>
+    <div class="card form" id="synccard"></div>
+
+    <h2 class="sec">Work timer settings</h2>
+    <div class="card form">
+      <label class="fld"><span>Daily work target (hours)</span><input id="goalh" type="number" inputmode="decimal" min="0" step="0.5"></label>
+      <div class="eyebrow" style="margin-top:4px">Categories</div>
+      <div id="catl"></div>
+      <div class="g2" style="grid-template-columns:minmax(0,3fr) minmax(0,1fr)">
+        <input id="catn" placeholder="New category" aria-label="New category">
+        <button class="btn2" data-a="catadd">Add</button>
+      </div>
+    </div>
+
+    <h2 class="sec">Habits</h2>
+    <div class="card form">
+      <p class="sm mu">Your 5 daily tasks drive the main streak. Habits here have their own streaks. Pick the days each one counts.</p>
+      <div id="habl"></div>
+      <div class="chips" id="habsug"></div>
+      <div class="g2" style="grid-template-columns:minmax(0,3fr) minmax(0,1fr)">
+        <input id="habn" placeholder="New habit, e.g. Gym" aria-label="New habit">
+        <button class="btn2" data-a="habadd">Add</button>
+      </div>
+    </div>
+
+    <h2 class="sec">How your week works</h2>
+    <div class="card">
+      <details open><summary>The pipeline</summary>
+        <ul>
+          <li><b>Find clips any time.</b> Paste the link into Clips right away.</li>
+          <li><b>Make days (Sat, Sun, Mon, Tue).</b> Make today's Short. On Sat, Sun and Mon also make one extra, set its publish date to Wed, Thu and Fri, and schedule it in YouTube Studio.</li>
+          <li><b>College days (Wed to Fri).</b> You make nothing. The Short you scheduled goes live and you tick it off.</li>
+          <li><b>48 hours after a Short goes live</b> the app asks for its numbers. Always record at 48 hours so every Short is judged at the same age.</li>
+          <li><b>7 days after</b> you get a small check to see how it is still doing. It never changes the 48-hour numbers.</li>
+        </ul>
+      </details>
+      <details><summary>What a test is</summary>
+        <p>You post every day anyway. A test is a rule for how you make those Shorts, so the results can be compared fairly. For example: this week, five Shorts in a row open with a question. Next, five open with a bold claim. After that you see which group did better.</p>
+        <p>Nothing extra to do. You pick the option when you save a Short, and the app counts to five and moves to the next test for you. Movie clips differ a lot, so trust a result only after 3 or more Shorts per option.</p>
+      </details>
+      <details><summary>Weekly structure</summary><div class="tw" style="margin-top:8px"><table id="wk"></table></div></details>
+      <details><summary>Active test</summary><div id="tst" style="margin-top:8px"></div></details>
+      <details><summary>Phases</summary><div id="phs" style="margin-top:8px"></div></details>
+      <details><summary>Plain-English glossary</summary><div id="gl"></div></details>
+      <details><summary>Watch and learn</summary><div id="wl"></div></details>
+    </div>
+
+    <h2 class="sec">Backup</h2>
+    <div class="card form">
+      <p class="sm mu">A backup file is a copy of everything. Keep one somewhere safe, for example in Files or iCloud Drive.</p>
+      <button class="btn2 full" data-a="export">Save a backup file</button>
+      <label class="btn2 full" style="cursor:pointer">Restore from a backup file<input id="imp" type="file" accept=".json,application/json" hidden></label>
+      <div id="impx"></div>
+      <div id="expx"></div>
+    </div>
+
+    <h2 class="sec">Reset</h2>
+    <div class="card form">
+      <button class="link bad" data-a="reset" style="text-align:left">Set plan Day 1 to today</button>
+      <p class="mu sm">Only changes which phase you are in. Logs, XP and streak stay.</p>
+      <button class="link bad" data-a="wipe" style="text-align:left">Erase everything and start fresh</button>
+      <div id="wipex"></div>
+    </div>
+  </section>
+</div>
+
+<nav class="tabs" id="nav"><div class="in">
+  <button data-a="tab" data-t="today" class="on"><svg class="ic"><use href="#i-today"/></svg>Today</button>
+  <button data-a="tab" data-t="time"><svg class="ic"><use href="#i-time"/></svg>Time</button>
+  <button data-a="tab" data-t="clips"><svg class="ic"><use href="#i-clip"/></svg>Clips</button>
+  <button data-a="tab" data-t="shorts"><svg class="ic"><use href="#i-log"/></svg>Shorts<span class="bdgn" id="bdgn" hidden></span></button>
+  <button data-a="tab" data-t="prog"><svg class="ic"><use href="#i-prog"/></svg>Progress</button>
+  <button data-a="tab" data-t="more"><svg class="ic"><use href="#i-more"/></svg>More</button>
+</div></nav>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="cel" id="cel" hidden role="dialog" aria-modal="true" aria-label="Streak milestone"><div class="celc" id="celc"></div></div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
