@@ -669,6 +669,7 @@ function renderYear(){
 /* ---------- milestones ---------- */
 /* Worked out from saved records every time, so nothing is stored and nothing can be reset.
    Each item: group, name, description, current value p, target t, unit. Achieved when p >= t. */
+function habBest(h){let c=0,b=0;for(let d=fk(h.added);key(d)<=T;d=ad(d,1)){const k=key(d);if(!habSched(h,k))continue;if(habDone(h,k)){c++;if(c>b)b=c}else if(k!==T)c=0}return b}
 function milestoneList(){
   const dn=done(),tv=dn.reduce((s,l)=>s+l.v,0),bs=bestStreak().n,ks=Object.keys(D.days),allSec=D.ses.reduce((s,x)=>s+sesSec(x),0);
   const weeks={};ks.forEach(x=>{const w=key(mondayOf(fk(x)));(weeks[w]=weeks[w]||[]).push(x)});
@@ -681,30 +682,40 @@ function milestoneList(){
   const maxV=dn.reduce((m,l)=>Math.max(m,l.v),0),over=dn.filter(l=>l.v>=1000).length;
   let run=0,bestRun=0;logsSorted().forEach(l=>{if(l.v>=1000){run++;if(run>bestRun)bestRun=run}else run=0});
   let bestWk=0;const wn=Math.min(60,Math.ceil((NOW-fk(D.start))/(7*864e5))+1);for(let o=0;o<wn;o++)bestWk=Math.max(bestWk,weekWork(o).sum);
+  const wv={};dn.forEach(l=>{const w=key(mondayOf(fk(ld(l))));wv[w]=(wv[w]||0)+l.v});const bestWkViews=Object.keys(wv).reduce((m,w)=>Math.max(m,wv[w]),0);
+  const habBestAll=D.habits.reduce((m,h)=>Math.max(m,habBest(h)),0),clipsUsed=D.clips.filter(c=>c.used).length;
   const S="Streaks and consistency",V="Shorts and views",W="Work and growth";
   return[
    {g:S,n:"7-day streak",d:"Seven days in a row",p:bs,t:7},
    {g:S,n:"Perfect week",d:"Seven full days in one week",p:bestFull,t:7},
    {g:S,n:"30-day streak",d:"A full month in a row",p:bs,t:30},
-   {g:S,n:"30 full days",d:"Thirty days with all 5 tasks done",p:fullDays,t:30,fresh:1},
-   {g:S,n:"60-day streak",d:"Two months in a row",p:bs,t:60,fresh:1},
+   {g:S,n:"30 full days",d:"Thirty days with all 5 tasks done",p:fullDays,t:30},
+   {g:S,n:"30-day habit streak",d:"Keep any one habit going for 30 scheduled days",p:habBestAll,t:30,fresh:1},
+   {g:S,n:"60-day streak",d:"Two months in a row",p:bs,t:60},
    {g:S,n:"100 days kept",d:"Hundred days at 3+ tasks",p:keptDays,t:100},
+   {g:S,n:"100-day streak",d:"A hundred days in a row",p:bs,t:100,fresh:1},
    {g:V,n:"First numbers in",d:"Add numbers for your first Short",p:dn.length,t:1},
    {g:V,n:"Over the floor",d:"A Short with 1,000+ views",p:over,t:1},
    {g:V,n:"10 Shorts with data",d:"Ten Shorts with numbers",p:dn.length,t:10},
    {g:V,n:"Test finished",d:"Five Shorts on one test",p:bestRound,t:5},
    {g:V,n:"10,000 views",d:"Total views across all Shorts",p:tv,t:10000,u:"v"},
-   {g:V,n:"10 over the floor in a row",d:"Ten Shorts in a row with 1,000+ views",p:bestRun,t:10,fresh:1},
-   {g:V,n:"50 Shorts with data",d:"Fifty Shorts with numbers",p:dn.length,t:50,fresh:1},
-   {g:V,n:"A 10k Short",d:"One Short with 10,000+ views",p:maxV,t:10000,u:"v",fresh:1},
-   {g:V,n:"100,000 views",d:"Total views across all Shorts",p:tv,t:100000,u:"v",fresh:1},
+   {g:V,n:"10 over the floor in a row",d:"Ten Shorts in a row with 1,000+ views",p:bestRun,t:10},
+   {g:V,n:"50 Shorts with data",d:"Fifty Shorts with numbers",p:dn.length,t:50},
+   {g:V,n:"A 10k Short",d:"One Short with 10,000+ views",p:maxV,t:10000,u:"v"},
+   {g:V,n:"100,000 views",d:"Total views across all Shorts",p:tv,t:100000,u:"v"},
+   {g:V,n:"25,000-view week",d:"Shorts published in one week reach 25,000 views together",p:bestWkViews,t:25000,u:"v",fresh:1},
+   {g:V,n:"100 Shorts with data",d:"A hundred Shorts with numbers",p:dn.length,t:100,fresh:1},
+   {g:V,n:"A 50k Short",d:"One Short with 50,000+ views",p:maxV,t:50000,u:"v",fresh:1},
+   {g:V,n:"250,000 views",d:"Total views across all Shorts",p:tv,t:250000,u:"v",fresh:1},
    {g:W,n:"Clip stock",d:"Save 10 clips",p:D.clips.length,t:10},
    {g:W,n:"Reviewer",d:"Write 4 weekly reviews",p:reviews,t:4},
    {g:W,n:"First 10 hours",d:"Track 10 hours of work",p:allSec,t:36000,u:"h"},
    {g:W,n:"Hit your target",d:"Reach your daily work target 10 times",p:goalDays,t:10},
    {g:W,n:"Level 10",d:"Reach level 10",p:levelOf(allXp()),t:10},
    {g:W,n:"100 hours",d:"Track 100 hours of work",p:allSec,t:360000,u:"h"},
-   {g:W,n:"30-hour week",d:"Track 30 hours of work in one week",p:bestWk,t:108000,u:"h",fresh:1}
+   {g:W,n:"30-hour week",d:"Track 30 hours of work in one week",p:bestWk,t:108000,u:"h"},
+   {g:W,n:"50 clips made into Shorts",d:"Turn 50 saved clips into Shorts",p:clipsUsed,t:50,fresh:1},
+   {g:W,n:"250 hours",d:"Track 250 hours of work",p:allSec,t:900000,u:"h",fresh:1}
   ];
 }
 const msVal=(m,x)=>m.u==="h"?(Math.round(x/360)/10)+"h":m.u==="v"?fmt(x):String(Math.round(x));
