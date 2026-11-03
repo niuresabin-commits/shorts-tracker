@@ -279,7 +279,7 @@
         <div id="rvh"></div>
       </div>
       <h2 class="sec">Milestones</h2>
-      <div class="badges" id="bdg"></div>
+      <div class="card" id="bdg"></div>
     </div>
   </section>
 
@@ -363,6 +363,12 @@
 </div></nav>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div class="cel" id="cel" hidden role="dialog" aria-modal="true" aria-label="Streak milestone"><div class="celc" id="celc"></div></div>
+
+<div class="sheet" id="msheet" hidden role="dialog" aria-modal="true" aria-label="Milestones">
+  <div class="sheeth"><div><div class="eyebrow">Milestones</div><b id="mscnt" class="num"></b></div><button class="btn2" id="msclose" data-a="mclose">Close</button></div>
+  <div class="seg seg3" id="mseg"><button data-a="mfilter" data-f="all" class="on">All</button><button data-a="mfilter" data-f="done">Achieved</button><button data-a="mfilter" data-f="todo">To go</button></div>
+  <div class="sheetb" id="msb"></div>
+</div>
 
 <script src="config.js"></script>
 <script src="app.js"></script>

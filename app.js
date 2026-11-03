@@ -271,7 +271,7 @@ function showCel(n){
   if(!(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches)){const cols=["var(--warm)","var(--ac)","var(--good)","var(--bad)"];for(let i=0;i<36;i++){const d=document.createElement("i");d.className="cf";d.style.cssText="left:"+(Math.random()*100).toFixed(1)+"%;background:"+cols[i%4]+";animation-delay:"+(Math.random()*.8).toFixed(2)+"s;animation-duration:"+(2.2+Math.random()*1.6).toFixed(2)+"s";cel.appendChild(d)}}
   cel.hidden=false;$("celb").focus();
 }
-document.addEventListener("keydown",e=>{if(e.key==="Escape")$("cel").hidden=true});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){$("cel").hidden=true;if(!$("msheet").hidden)closeMsheet()}});
 
 /* ---------- clips ---------- */
 function parseYT(s){
@@ -664,13 +664,73 @@ function renderYear(){
   $("rvwk").textContent="Week of "+fd(wk);setVal("rw",cur.w);setVal("rc",cur.c);
   const past=Object.keys(D.rv).filter(x=>x!==wk&&(D.rv[x].w||D.rv[x].c)).sort().reverse();
   $("rvh").innerHTML=past.length?past.map(x=>'<div class="rvh">Week of '+fd(x)+'</div>'+(D.rv[x].w?'<div class="rvt"><b>Worked:</b> '+esc(D.rv[x].w)+'</div>':"")+(D.rv[x].c?'<div class="rvt"><b>Change:</b> '+esc(D.rv[x].c)+'</div>':"")).join(""):"";
-  const weeks={};ks.forEach(x=>{const w=key(mondayOf(fk(x)));(weeks[w]=weeks[w]||[]).push(x)});
-  const perfectWk=Object.keys(weeks).some(w=>weekKeys(w).every(x=>cnt(x)===5));
-  const rounds={};D.logs.forEach(l=>rounds[l.tr]=(rounds[l.tr]||0)+1);
-  const goalDays=(()=>{const gs=(+D.goal.h||0)*3600;if(!gs)return 0;const days={};D.ses.forEach(x=>days[x.d]=1);return Object.keys(days).filter(k=>secOn(k)>=gs).length})();
-  const B=[["First numbers in","Add numbers for your first Short",dn.length>=1],["10 Shorts with data","Ten Shorts with numbers",dn.length>=10],["Over the floor","A Short with 1,000+ views",dn.some(l=>l.v>=1000)],["10,000 views","Total views across all Shorts",tv>=10000],["7-day streak","Seven days in a row",bs.n>=7],["30-day streak","A full month in a row",bs.n>=30],["Perfect week","Seven full days in one week",perfectWk],["Test finished","Five Shorts on one test",Object.keys(rounds).some(r=>rounds[r]>=5)],["Clip stock","Save 10 clips",D.clips.length>=10],["First 10 hours","Track 10 hours of work",allSec>=36000],["100 hours","Track 100 hours of work",allSec>=360000],["Hit your target","Reach your daily work target 10 times",goalDays>=10],["100 days kept","Hundred days at 3+ tasks",ks.filter(x=>cnt(x)>=KEEP).length>=100],["Level 10","Reach level 10",levelOf(allXp())>=10],["Reviewer","Write 4 weekly reviews",Object.keys(D.rv).filter(x=>D.rv[x].w||D.rv[x].c).length>=4]];
-  $("bdg").innerHTML=B.map(b=>'<div class="bd '+(b[2]?"on":"off")+'"><b>'+b[0]+'</b><span>'+b[1]+'</span></div>').join("");
+  renderMilestones();
 }
+/* ---------- milestones ---------- */
+/* Worked out from saved records every time, so nothing is stored and nothing can be reset.
+   Each item: group, name, description, current value p, target t, unit. Achieved when p >= t. */
+function milestoneList(){
+  const dn=done(),tv=dn.reduce((s,l)=>s+l.v,0),bs=bestStreak().n,ks=Object.keys(D.days),allSec=D.ses.reduce((s,x)=>s+sesSec(x),0);
+  const weeks={};ks.forEach(x=>{const w=key(mondayOf(fk(x)));(weeks[w]=weeks[w]||[]).push(x)});
+  const bestFull=Object.keys(weeks).reduce((m,w)=>Math.max(m,weekKeys(w).filter(x=>cnt(x)===5).length),0);
+  const rounds={};D.logs.forEach(l=>rounds[l.tr]=(rounds[l.tr]||0)+1);
+  const bestRound=Object.keys(rounds).reduce((m,r)=>Math.max(m,rounds[r]),0);
+  const gs=(+D.goal.h||0)*3600,goalDays=(()=>{if(!gs)return 0;const days={};D.ses.forEach(x=>days[x.d]=1);return Object.keys(days).filter(k=>secOn(k)>=gs).length})();
+  const keptDays=ks.filter(x=>cnt(x)>=KEEP).length,fullDays=ks.filter(x=>cnt(x)===5).length;
+  const reviews=Object.keys(D.rv).filter(x=>D.rv[x].w||D.rv[x].c).length;
+  const maxV=dn.reduce((m,l)=>Math.max(m,l.v),0),over=dn.filter(l=>l.v>=1000).length;
+  let run=0,bestRun=0;logsSorted().forEach(l=>{if(l.v>=1000){run++;if(run>bestRun)bestRun=run}else run=0});
+  let bestWk=0;const wn=Math.min(60,Math.ceil((NOW-fk(D.start))/(7*864e5))+1);for(let o=0;o<wn;o++)bestWk=Math.max(bestWk,weekWork(o).sum);
+  const S="Streaks and consistency",V="Shorts and views",W="Work and growth";
+  return[
+   {g:S,n:"7-day streak",d:"Seven days in a row",p:bs,t:7},
+   {g:S,n:"Perfect week",d:"Seven full days in one week",p:bestFull,t:7},
+   {g:S,n:"30-day streak",d:"A full month in a row",p:bs,t:30},
+   {g:S,n:"30 full days",d:"Thirty days with all 5 tasks done",p:fullDays,t:30,fresh:1},
+   {g:S,n:"60-day streak",d:"Two months in a row",p:bs,t:60,fresh:1},
+   {g:S,n:"100 days kept",d:"Hundred days at 3+ tasks",p:keptDays,t:100},
+   {g:V,n:"First numbers in",d:"Add numbers for your first Short",p:dn.length,t:1},
+   {g:V,n:"Over the floor",d:"A Short with 1,000+ views",p:over,t:1},
+   {g:V,n:"10 Shorts with data",d:"Ten Shorts with numbers",p:dn.length,t:10},
+   {g:V,n:"Test finished",d:"Five Shorts on one test",p:bestRound,t:5},
+   {g:V,n:"10,000 views",d:"Total views across all Shorts",p:tv,t:10000,u:"v"},
+   {g:V,n:"10 over the floor in a row",d:"Ten Shorts in a row with 1,000+ views",p:bestRun,t:10,fresh:1},
+   {g:V,n:"50 Shorts with data",d:"Fifty Shorts with numbers",p:dn.length,t:50,fresh:1},
+   {g:V,n:"A 10k Short",d:"One Short with 10,000+ views",p:maxV,t:10000,u:"v",fresh:1},
+   {g:V,n:"100,000 views",d:"Total views across all Shorts",p:tv,t:100000,u:"v",fresh:1},
+   {g:W,n:"Clip stock",d:"Save 10 clips",p:D.clips.length,t:10},
+   {g:W,n:"Reviewer",d:"Write 4 weekly reviews",p:reviews,t:4},
+   {g:W,n:"First 10 hours",d:"Track 10 hours of work",p:allSec,t:36000,u:"h"},
+   {g:W,n:"Hit your target",d:"Reach your daily work target 10 times",p:goalDays,t:10},
+   {g:W,n:"Level 10",d:"Reach level 10",p:levelOf(allXp()),t:10},
+   {g:W,n:"100 hours",d:"Track 100 hours of work",p:allSec,t:360000,u:"h"},
+   {g:W,n:"30-hour week",d:"Track 30 hours of work in one week",p:bestWk,t:108000,u:"h",fresh:1}
+  ];
+}
+const msVal=(m,x)=>m.u==="h"?(Math.round(x/360)/10)+"h":m.u==="v"?fmt(x):String(Math.round(x));
+const msOk=m=>m.p>=m.t;
+const msFrac=m=>Math.min(1,m.t?m.p/m.t:0);
+let mFilter="all";
+function renderMilestones(){
+  const L=milestoneList(),ok=L.filter(msOk).length,next=L.filter(m=>!msOk(m)).sort((a,b)=>msFrac(b)-msFrac(a)).slice(0,3);
+  $("bdg").innerHTML='<div class="lgt"><div><div class="eyebrow">Milestones</div><div class="msum num"><b>'+ok+'</b> of '+L.length+' achieved</div></div><button class="btn2 pri" data-a="mopen">See all</button></div>'
+   +'<div class="tbar" style="margin-top:12px"><i style="width:'+Math.round(ok/L.length*100)+'%"></i></div>'
+   +(next.length?'<div class="eyebrow" style="margin-top:16px">Next up</div>'+next.map(m=>'<div class="mrow"><div class="mt"><b>'+esc(m.n)+'</b><div class="mb"><i style="width:'+Math.round(msFrac(m)*100)+'%"></i></div></div><span class="mv num">'+msVal(m,m.p)+' / '+msVal(m,m.t)+'</span></div>').join(""):'<p class="sm mu" style="margin-top:14px">Every milestone achieved.</p>');
+  if(!$("msheet").hidden)renderMsheet();
+}
+function renderMsheet(){
+  const L=milestoneList(),ok=L.filter(msOk).length;
+  $("mscnt").textContent=ok+" achieved · "+(L.length-ok)+" to go";
+  document.querySelectorAll("#mseg button").forEach(b=>b.classList.toggle("on",b.dataset.f===mFilter));
+  const groups=[];L.forEach(m=>{let g=groups.find(x=>x.n===m.g);if(!g){g={n:m.g,a:[]};groups.push(g)}g.a.push(m)});
+  $("msb").innerHTML=groups.map(g=>{
+    const got=g.a.filter(msOk).length,rows=g.a.filter(m=>mFilter==="all"||(mFilter==="done"?msOk(m):!msOk(m)));
+    if(!rows.length)return"";
+    return'<details class="mgrp" open><summary><span>'+esc(g.n)+'</span><span class="num mu sm">'+got+'/'+g.a.length+'</span></summary>'+rows.map(m=>{const o=msOk(m);
+      return'<div class="mrow'+(o?" ok":"")+'"><i class="mk">'+(o?'<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chk"/></svg>':"")+'</i><div class="mt"><b>'+esc(m.n)+(m.fresh&&!o?' <span class="pill">New</span>':"")+'</b><span class="sm mu">'+esc(m.d)+'</span>'+(o?"":'<div class="mb"><i style="width:'+Math.round(msFrac(m)*100)+'%"></i></div>')+'</div><span class="mv num">'+(o?"Done":msVal(m,m.p)+" / "+msVal(m,m.t))+'</span></div>'}).join("")+'</details>'}).join("")||'<p class="mu" style="padding:12px 0">Nothing here yet.</p>';
+}
+function openMsheet(){mFilter="all";$("msheet").hidden=false;document.documentElement.style.overflow="hidden";renderMsheet();$("msclose").focus()}
+function closeMsheet(){$("msheet").hidden=true;document.documentElement.style.overflow=""}
 function baseRes(){
   const b=D.base,ls=logsSorted(),last=ls.slice(-5),parts=[];
   if(b.s!==""&&b.n!==""){const d=(+b.n)-(+b.s);parts.push("Subscribers: "+(d>=0?"+":"")+fmt(d)+" since day 1.")}
@@ -767,6 +827,9 @@ document.addEventListener("click",e=>{
   else if(a==="reset")confirmTap(t,"Tap again to set Day 1 to today",()=>{D.start=T;touchMeta();persist();render();toast("Plan Day 1 is today")});
   else if(a==="export")doExport();
   else if(a==="celclose")$("cel").hidden=true;
+  else if(a==="mopen")openMsheet();
+  else if(a==="mclose")closeMsheet();
+  else if(a==="mfilter"){mFilter=t.dataset.f;renderMsheet()}
   /* timer */
   else if(a==="tcat"){D.lastCat=id;persist();renderTimerCards()}
   else if(a==="tstart")startTimer(D.lastCat&&catById(D.lastCat)?D.lastCat:D.cats[0].id);
