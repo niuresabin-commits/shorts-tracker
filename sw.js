@@ -1,7 +1,7 @@
 /* Service worker: keeps the app working offline.
    App files: network first (so updates arrive as soon as you are online), cache as fallback.
    Fonts: cache first. Supabase calls are never cached. */
-const V = "shorts-tracker-v1";
+const V = "shorts-tracker-v2";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "config.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 
 self.addEventListener("install", e => {
@@ -20,7 +20,7 @@ self.addEventListener("fetch", e => {
   const u = new URL(r.url);
   if (u.origin === location.origin) {
     e.respondWith(
-      fetch(r).then(res => {
+      fetch(r, { cache: "no-cache" }).then(res => {
         if (res.ok) { const cp = res.clone(); caches.open(V).then(c => c.put(r, cp)); }
         return res;
       }).catch(() => caches.match(r).then(m => m || caches.match("index.html")))
