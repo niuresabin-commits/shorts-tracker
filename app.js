@@ -129,6 +129,34 @@ const habDone=(h,k)=>!!(D.days[k]&&D.days[k].h&&D.days[k].h[h.id]);
 const habSched=(h,k)=>h.dw.indexOf(fk(k).getDay())>=0;
 function habStreak(h){let d=fk(T),n=0;for(let i=0;i<800;i++){const k=key(d);if(k<h.added)break;if(habSched(h,k)){if(habDone(h,k))n++;else if(k!==T)break}d=ad(d,-1)}return n}
 function habRate(h){let s=0,dn=0;for(let i=0;i<30;i++){const k=key(ad(fk(T),-i));if(k<h.added)break;if(habSched(h,k)){s++;if(habDone(h,k))dn++}}return s?Math.round(dn/s*100):null}
+/* Flexible habits: a weekly goal (h.wk times a week, any days). Habits without h.wk work exactly as before.
+   The streak counts days you did it. Within each Monday-Sunday week you may miss (7 - wk) days without breaking it;
+   one more miss breaks it, and the streak then starts again with a fresh allowance. */
+const habFlex=h=>(+h.wk||0)>0;
+function habSim(h){
+  const allow=Math.max(0,7-h.wk),st={};let start=h.added;
+  Object.keys(D.days).forEach(k=>{const r=D.days[k];if(r.h&&r.h[h.id]&&k<start)start=k});
+  let c=0,best=0,rests=0,wkKey=null;
+  for(let d=fk(start);key(d)<T;d=ad(d,1)){
+    const k=key(d),w=key(mondayOf(d));if(w!==wkKey){wkKey=w;rests=0}
+    if(habDone(h,k)){c++;if(c>best)best=c;st[k]="d"}
+    else{rests++;if(rests>allow){c=0;rests=0;st[k]="x"}else st[k]="r"}
+  }
+  if(key(mondayOf(fk(T)))!==wkKey)rests=0;
+  const dn=habDone(h,T);if(dn){c++;if(c>best)best=c;st[T]="d"}
+  return{c,best,rests,allow,start,st,doneToday:dn};
+}
+function flexRow(h){
+  const sm=habSim(h),wk=weekKeys(T),wd=["M","T","W","T","F","S","S"],left=Math.max(0,sm.allow-sm.rests),got=wk.filter(k=>k<=T&&habDone(h,k)).length,risk=!sm.doneToday&&sm.c>0&&sm.rests>=sm.allow;
+  const status=sm.doneToday?"Done today":risk?"Do it today to keep your streak":left+" rest day"+(left===1?"":"s")+" left this week";
+  const days=wk.map((k,i)=>{const f=k>T,cl=f?"f":habDone(h,k)?"d":k===T?"t":(sm.st[k]||"n");
+    return'<button class="hd '+cl+'" data-a="hday" data-id="'+esc(h.id)+'" data-k="'+k+'"'+(f?" disabled":"")+' aria-label="'+DOW[(i+1)%7]+(habDone(h,k)?", done":"")+'">'+wd[i]+'</button>'}).join("");
+  return'<div class="hflex"><div class="lgt"><div><b>'+esc(h.n)+'</b><div class="sm" style="'+(risk?"color:var(--warm);font-weight:600":"color:var(--mu)")+'">'+(got>=h.wk?got+' this week · goal met':got+' of '+h.wk+' this week')+' · '+status+'</div></div><span class="hs"><svg viewBox="0 0 24 24"><use href="#i-flame"/></svg>'+sm.c+'</span></div><div class="hdays">'+days+'</div></div>';
+}
+function flexHabitRows(k){
+  const hs=D.habits.filter(habFlex);if(!hs.length)return"";
+  return'<div class="rvh">Habits</div>'+hs.map(h=>'<label class="task c'+(habDone(h,k)?" done":"")+'"><input type="checkbox" data-a="habk" data-k="'+k+'" data-id="'+esc(h.id)+'"'+(habDone(h,k)?" checked":"")+'><span class="tx"><b>'+esc(h.n)+'</b></span></label>').join("");
+}
 
 /* ---------- sync ---------- */
 const SPECIAL=["meta","clips"];
@@ -423,18 +451,23 @@ function saveSes(e){
 
 /* ---------- habits ---------- */
 function renderHabitsToday(){
-  const hs=D.habits.filter(h=>habSched(h,T)&&h.added<=T);
   if(!D.habits.length){$("hab").innerHTML='<h2 class="sec">Habits</h2><div class="card"><p class="sm mu">Add your own habits, like gym or reading, each with its own streak.</p><button class="btn2" style="margin-top:10px" data-a="tab" data-t="more">Add habits</button></div>';return}
-  $("hab").innerHTML='<h2 class="sec">Habits</h2><div class="card tasks">'+(hs.length?hs.map(h=>{const dn=habDone(h,T),st=habStreak(h);
-    return'<label class="task'+(dn?" done":"")+' c"><input type="checkbox" data-a="hab" data-id="'+esc(h.id)+'"'+(dn?" checked":"")+'><span class="tx"><b>'+esc(h.n)+'</b></span><span class="hs"><svg viewBox="0 0 24 24"><use href="#i-flame"/></svg>'+st+'</span></label>'}).join(""):'<p class="sm mu" style="padding:12px 0">No habits scheduled today.</p>')+'</div>';
+  const fixed=D.habits.filter(h=>!habFlex(h)&&habSched(h,T)&&h.added<=T),flex=D.habits.filter(habFlex);
+  const rows=fixed.map(h=>{const dn=habDone(h,T),st=habStreak(h);
+    return'<label class="task'+(dn?" done":"")+' c"><input type="checkbox" data-a="hab" data-id="'+esc(h.id)+'"'+(dn?" checked":"")+'><span class="tx"><b>'+esc(h.n)+'</b></span><span class="hs"><svg viewBox="0 0 24 24"><use href="#i-flame"/></svg>'+st+'</span></label>'}).join("")+flex.map(flexRow).join("");
+  $("hab").innerHTML='<h2 class="sec">Habits</h2><div class="card tasks">'+(rows||'<p class="sm mu" style="padding:12px 0">No habits scheduled today.</p>')+'</div>';
 }
 function renderHabitStats(){
   $("hstat").innerHTML=D.habits.length?D.habits.map(h=>{
+    if(habFlex(h)){
+      const sm=habSim(h);let dots="";for(let i=13;i>=0;i--){const k=key(ad(fk(T),-i));dots+='<i class="'+(habDone(h,k)?"d":sm.st[k]==="r"?"r":sm.st[k]==="x"?"x":"n")+'"></i>'}
+      const got=weekKeys(T).filter(k=>k<=T&&habDone(h,k)).length;
+      return'<div class="hrow"><div class="lgt"><b>'+esc(h.n)+' <span class="pill">'+h.wk+'× a week</span></b><span class="num"><b>'+sm.c+'</b> <span class="mu sm">day streak</span></span></div><div class="mu sm">Best streak '+sm.best+' days · '+(got>=h.wk?got+' this week, goal met':got+' of '+h.wk+' this week')+'</div><div class="hdots">'+dots+'</div></div>';
+    }
     let dots="";for(let i=13;i>=0;i--){const k=key(ad(fk(T),-i));dots+='<i class="'+(k<h.added||!habSched(h,k)?"n":habDone(h,k)?"d":"")+'"></i>'}
     const r=habRate(h);
     return'<div class="hrow"><div class="lgt"><b>'+esc(h.n)+'</b><span class="num"><b>'+habStreak(h)+'</b> <span class="mu sm">day streak</span></span></div><div class="mu sm">'+(r==null?"Not enough days yet":r+"% of scheduled days in the last 30")+'</div><div class="hdots">'+dots+'</div></div>'}).join(""):'<span class="mu">No habits yet. Add some in More.</span>';
 }
-
 /* ---------- TODAY ---------- */
 function renderHead(){
   $("hdate").textContent=DOW[dow]+" "+NOW.getDate()+" "+MON[NOW.getMonth()];
@@ -650,7 +683,7 @@ function renderYear(){
   $("ygrid").innerHTML=g+'</div>';
   const k=selDay,n=cnt(k),logs=shortsOn(k),ws=secOn(k);
   $("dayd").innerHTML='<div class="dayh"><div><div class="eyebrow">'+(k===T?"Today":"Selected day")+'</div><b>'+fdl(k)+'</b></div><span class="pill'+(n===5?" g":"")+'">'+(isRest(k)?"Rest day":n+" of 5 · "+xpOf(k)+" XP")+'</span></div>'
-   +(k>T?'<p class="mu sm">This day has not happened yet.</p>':CORE_T.map((t,i)=>taskRow(k,i,t,"",true)).join("")
+   +(k>T?'<p class="mu sm">This day has not happened yet.</p>':CORE_T.map((t,i)=>taskRow(k,i,t,"",true)).join("")+flexHabitRows(k)
    +'<button class="btn2 full" data-a="rest" data-k="'+k+'" style="margin-top:8px"'+(!isRest(k)&&weekHasOtherRest(k)?" disabled":"")+'>'+(isRest(k)?"Undo rest day":!isRest(k)&&weekHasOtherRest(k)?"Rest day already used this week":"Mark as rest day")+'</button>')
    +(ws>0?'<div class="rvh">Work time</div><div class="kv"><span>Tracked</span><b>'+fmtDur(ws)+'</b></div>':"")
    +(logs.length?'<div class="rvh">Shorts on this day</div>'+logs.map(l=>'<div class="kv"><span>'+esc(l.t)+'</span><b>'+(l.lg?fmt(l.v)+" views":"waiting")+'</b></div>').join(""):"");
@@ -683,17 +716,18 @@ function milestoneList(){
   let run=0,bestRun=0;logsSorted().forEach(l=>{if(l.v>=1000){run++;if(run>bestRun)bestRun=run}else run=0});
   let bestWk=0;const wn=Math.min(60,Math.ceil((NOW-fk(D.start))/(7*864e5))+1);for(let o=0;o<wn;o++)bestWk=Math.max(bestWk,weekWork(o).sum);
   const wv={};dn.forEach(l=>{const w=key(mondayOf(fk(ld(l))));wv[w]=(wv[w]||0)+l.v});const bestWkViews=Object.keys(wv).reduce((m,w)=>Math.max(m,wv[w]),0);
-  const habBestAll=D.habits.reduce((m,h)=>Math.max(m,habBest(h)),0),clipsUsed=D.clips.filter(c=>c.used).length;
+  const habBestAll=D.habits.reduce((m,h)=>Math.max(m,habFlex(h)?habSim(h).best:habBest(h)),0),clipsUsed=D.clips.filter(c=>c.used).length;
   const S="Streaks and consistency",V="Shorts and views",W="Work and growth";
   return[
    {g:S,n:"7-day streak",d:"Seven days in a row",p:bs,t:7},
    {g:S,n:"Perfect week",d:"Seven full days in one week",p:bestFull,t:7},
    {g:S,n:"30-day streak",d:"A full month in a row",p:bs,t:30},
    {g:S,n:"30 full days",d:"Thirty days with all 5 tasks done",p:fullDays,t:30},
-   {g:S,n:"30-day habit streak",d:"Keep any one habit going for 30 scheduled days",p:habBestAll,t:30,fresh:1},
+   {g:S,n:"30-day habit streak",d:"Keep any one habit going for 30 scheduled days",p:habBestAll,t:30},
    {g:S,n:"60-day streak",d:"Two months in a row",p:bs,t:60},
    {g:S,n:"100 days kept",d:"Hundred days at 3+ tasks",p:keptDays,t:100},
-   {g:S,n:"100-day streak",d:"A hundred days in a row",p:bs,t:100,fresh:1},
+   {g:S,n:"100-day streak",d:"A hundred days in a row",p:bs,t:100},
+   {g:S,n:"100-day habit streak",d:"Keep any one habit going for 100 days",p:habBestAll,t:100,fresh:1},
    {g:V,n:"First numbers in",d:"Add numbers for your first Short",p:dn.length,t:1},
    {g:V,n:"Over the floor",d:"A Short with 1,000+ views",p:over,t:1},
    {g:V,n:"10 Shorts with data",d:"Ten Shorts with numbers",p:dn.length,t:10},
@@ -703,10 +737,10 @@ function milestoneList(){
    {g:V,n:"50 Shorts with data",d:"Fifty Shorts with numbers",p:dn.length,t:50},
    {g:V,n:"A 10k Short",d:"One Short with 10,000+ views",p:maxV,t:10000,u:"v"},
    {g:V,n:"100,000 views",d:"Total views across all Shorts",p:tv,t:100000,u:"v"},
-   {g:V,n:"25,000-view week",d:"Shorts published in one week reach 25,000 views together",p:bestWkViews,t:25000,u:"v",fresh:1},
-   {g:V,n:"100 Shorts with data",d:"A hundred Shorts with numbers",p:dn.length,t:100,fresh:1},
-   {g:V,n:"A 50k Short",d:"One Short with 50,000+ views",p:maxV,t:50000,u:"v",fresh:1},
-   {g:V,n:"250,000 views",d:"Total views across all Shorts",p:tv,t:250000,u:"v",fresh:1},
+   {g:V,n:"25,000-view week",d:"Shorts published in one week reach 25,000 views together",p:bestWkViews,t:25000,u:"v"},
+   {g:V,n:"100 Shorts with data",d:"A hundred Shorts with numbers",p:dn.length,t:100},
+   {g:V,n:"A 50k Short",d:"One Short with 50,000+ views",p:maxV,t:50000,u:"v"},
+   {g:V,n:"250,000 views",d:"Total views across all Shorts",p:tv,t:250000,u:"v"},
    {g:W,n:"Clip stock",d:"Save 10 clips",p:D.clips.length,t:10},
    {g:W,n:"Reviewer",d:"Write 4 weekly reviews",p:reviews,t:4},
    {g:W,n:"First 10 hours",d:"Track 10 hours of work",p:allSec,t:36000,u:"h"},
@@ -714,8 +748,8 @@ function milestoneList(){
    {g:W,n:"Level 10",d:"Reach level 10",p:levelOf(allXp()),t:10},
    {g:W,n:"100 hours",d:"Track 100 hours of work",p:allSec,t:360000,u:"h"},
    {g:W,n:"30-hour week",d:"Track 30 hours of work in one week",p:bestWk,t:108000,u:"h"},
-   {g:W,n:"50 clips made into Shorts",d:"Turn 50 saved clips into Shorts",p:clipsUsed,t:50,fresh:1},
-   {g:W,n:"250 hours",d:"Track 250 hours of work",p:allSec,t:900000,u:"h",fresh:1}
+   {g:W,n:"50 clips made into Shorts",d:"Turn 50 saved clips into Shorts",p:clipsUsed,t:50},
+   {g:W,n:"250 hours",d:"Track 250 hours of work",p:allSec,t:900000,u:"h"}
   ];
 }
 const msVal=(m,x)=>m.u==="h"?(Math.round(x/360)/10)+"h":m.u==="v"?fmt(x):String(Math.round(x));
@@ -767,7 +801,11 @@ function renderSync(){
 function renderMore(){
   setVal("goalh",D.goal.h);
   $("catl").innerHTML=D.cats.map(c=>'<div class="srow" style="align-items:center"><span class="tcat" style="flex:1;min-width:0"><i class="dot" style="background:'+catColor(c.id)+'"></i><input data-f="catn" data-id="'+esc(c.id)+'" value="'+esc(c.n)+'" aria-label="Category name"></span><button class="btn2" data-a="catdel" data-id="'+esc(c.id)+'">Delete</button></div>').join("");
-  $("habl").innerHTML=D.habits.length?D.habits.map(h=>'<div class="hrow"><input data-f="hn" data-id="'+esc(h.id)+'" value="'+esc(h.n)+'" aria-label="Habit name"><div class="dws">'+WD.map(w=>'<button data-a="hdw" data-id="'+esc(h.id)+'" data-d="'+w[1]+'" class="'+(h.dw.indexOf(w[1])>=0?"on":"")+'" aria-label="'+DOW[w[1]]+'">'+w[0]+'</button>').join("")+'</div><div><button class="link bad" data-a="hdel" data-id="'+esc(h.id)+'">Delete habit</button></div></div>').join(""):'<p class="sm mu">No habits yet. Tap one below or type your own.</p>';
+  $("habl").innerHTML=D.habits.length?D.habits.map(h=>{const fx=habFlex(h),id=esc(h.id);
+    return'<div class="hrow"><input data-f="hn" data-id="'+id+'" value="'+esc(h.n)+'" aria-label="Habit name"><div class="seg"><button data-a="hmode" data-id="'+id+'" data-m="fixed" class="'+(fx?"":"on")+'">Fixed days</button><button data-a="hmode" data-id="'+id+'" data-m="flex" class="'+(fx?"on":"")+'">Flexible</button></div>'
+    +(fx?'<div class="step"><button class="btn2" data-a="hwk" data-id="'+id+'" data-d="-1" aria-label="Fewer times a week">−</button><span class="num"><b>'+h.wk+'</b> times a week, any days</span><button class="btn2" data-a="hwk" data-id="'+id+'" data-d="1" aria-label="More times a week">+</button></div><p class="sm mu">Rest days are fine. Your streak only breaks if you miss more than '+(7-h.wk)+' day'+(7-h.wk===1?"":"s")+' in one week.</p>'
+      :'<div class="dws">'+WD.map(w=>'<button data-a="hdw" data-id="'+id+'" data-d="'+w[1]+'" class="'+(h.dw.indexOf(w[1])>=0?"on":"")+'" aria-label="'+DOW[w[1]]+'">'+w[0]+'</button>').join("")+'</div>')
+    +'<div><button class="link bad" data-a="hdel" data-id="'+id+'">Delete habit</button></div></div>'}).join(""):'<p class="sm mu">No habits yet. Tap one below or type your own.</p>';
   $("habsug").innerHTML=HAB_SUG.filter(n=>!D.habits.some(h=>h.n.toLowerCase()===n.toLowerCase())).map(n=>'<button class="chip" data-a="habsug" data-n="'+n+'">+ '+n+'</button>').join("");
   const sa=window.matchMedia&&matchMedia("(display-mode: standalone)").matches||navigator.standalone;
   $("inst").innerHTML=sa?"":'<div class="card" style="background:var(--acs);border-color:transparent"><b>Install on your iPhone</b><p class="sm" style="margin-top:4px">Open this page in Safari, tap the Share button, then <b>Add to Home Screen</b>. It opens full screen like an app and works offline.</p></div>';
@@ -862,6 +900,9 @@ document.addEventListener("click",e=>{
     if(D.cats.length<=1){toast("Keep at least one category");return}
     confirmTap(t,"Tap again to delete",()=>{D.cats=D.cats.filter(c=>c.id!==id);if(D.lastCat===id)D.lastCat=D.cats[0].id;touchMeta();persist();renderMore()})}
   else if(a==="habadd"||a==="habsug"){const n=a==="habsug"?t.dataset.n:$("habn").value.trim();if(!n)return;D.habits.push({id:newId(),n,dw:[0,1,2,3,4,5,6],added:T});if(a==="habadd")$("habn").value="";touchMeta();persist();renderMore();toast("Habit added")}
+  else if(a==="hmode"){const h=D.habits.find(x=>x.id===id);if(!h)return;if(t.dataset.m==="flex"){if(!habFlex(h))h.wk=Math.min(6,Math.max(1,h.dw.length||3))}else delete h.wk;touchMeta();persist();render()}
+  else if(a==="hwk"){const h=D.habits.find(x=>x.id===id);if(!h||!habFlex(h))return;h.wk=Math.min(7,Math.max(1,h.wk+(+t.dataset.d)));touchMeta();persist();render()}
+  else if(a==="hday"){const k=t.dataset.k;if(k>T)return;const r=rec(k);r.h=r.h||{};if(r.h[id])delete r.h[id];else r.h[id]=1;touchDay(k);persist();render()}
   else if(a==="hdw"){const h=D.habits.find(x=>x.id===id),d=+t.dataset.d;if(!h)return;const i=h.dw.indexOf(d);if(i>=0){if(h.dw.length>1)h.dw.splice(i,1)}else h.dw.push(d);touchMeta();persist();renderMore()}
   else if(a==="hdel")confirmTap(t,"Tap again to delete",()=>{D.habits=D.habits.filter(h=>h.id!==id);touchMeta();persist();renderMore()});
   /* account */
@@ -900,7 +941,8 @@ function wipeAll(){
 }
 document.addEventListener("change",e=>{
   const t=e.target;if(!t.dataset)return;
-  if(t.dataset.a==="task"){setTask(t.dataset.k,+t.dataset.i,t.checked);render()}
+  if(t.dataset.a==="habk"){const r=rec(t.dataset.k);r.h=r.h||{};if(t.checked)r.h[t.dataset.id]=1;else delete r.h[t.dataset.id];touchDay(t.dataset.k);persist();render()}
+  else if(t.dataset.a==="task"){setTask(t.dataset.k,+t.dataset.i,t.checked);render()}
   else if(t.dataset.a==="hab"){const r=rec(T);r.h=r.h||{};if(t.checked)r.h[t.dataset.id]=1;else delete r.h[t.dataset.id];touchDay(T);persist();render()}
 });
 let dbT={};

@@ -225,6 +225,23 @@ svg.ch text{font:500 10px var(--f-m);fill:var(--mu)}
 .hdots i{width:12px;height:12px;border-radius:3px;background:var(--sf2)}
 .hdots i.d{background:var(--good)}.hdots i.n{background:transparent;box-shadow:inset 0 0 0 1px var(--ln)}
 
+/* flexible habits */
+.hflex{padding:14px 0;border-top:1px solid var(--ln)}
+.hflex:first-child{border-top:0}
+.hflex .hs{display:flex;align-items:center;gap:4px;font:800 18px var(--f-d);flex:none}
+.hflex .hs svg{width:18px;height:18px;fill:var(--warm)}
+.hdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-top:10px}
+.hd{aspect-ratio:1;max-height:46px;border-radius:11px;border:1.5px solid var(--ln);background:none;font:600 12px var(--f-m);color:var(--mu);padding:0}
+.hd.d{background:var(--good);border-color:var(--good);color:#fff}
+.hd.r{background:var(--acs);border-color:transparent;color:var(--ac)}
+.hd.x{border-color:var(--bad);color:var(--bad)}
+.hd.t{border-color:var(--ink);color:var(--ink)}
+.hd.f{opacity:.35;cursor:default}
+.hdots i.r{background:var(--acs)}
+.hdots i.x{background:transparent;box-shadow:inset 0 0 0 1.5px var(--bad)}
+.step{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.step .btn2{min-width:44px}
+
 /* more */
 details{border-top:1px solid var(--ln);padding:12px 0}
 details:first-of-type{border-top:0}
