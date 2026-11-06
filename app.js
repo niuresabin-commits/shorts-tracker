@@ -150,7 +150,8 @@ function flexRow(h){
   const sm=habSim(h),wk=weekKeys(T),wd=["M","T","W","T","F","S","S"],left=Math.max(0,sm.allow-sm.rests),got=wk.filter(k=>k<=T&&habDone(h,k)).length,risk=!sm.doneToday&&sm.c>0&&sm.rests>=sm.allow;
   const status=sm.doneToday?"Done today":risk?"Do it today to keep your streak":left+" rest day"+(left===1?"":"s")+" left this week";
   const days=wk.map((k,i)=>{const f=k>T,cl=f?"f":habDone(h,k)?"d":k===T?"t":(sm.st[k]||"n");
-    return'<button class="hd '+cl+'" data-a="hday" data-id="'+esc(h.id)+'" data-k="'+k+'"'+(f?" disabled":"")+' aria-label="'+DOW[(i+1)%7]+(habDone(h,k)?", done":"")+'">'+wd[i]+'</button>'}).join("");
+    const ic=cl==="d"?'<svg viewBox="0 0 24 24"><use href="#i-chk"/></svg>':cl==="r"?'<svg viewBox="0 0 24 24"><use href="#i-moon"/></svg>':cl==="x"?"×":"";
+    return'<button class="hd '+cl+(k===T?" td":"")+'" data-a="hday" data-id="'+esc(h.id)+'" data-k="'+k+'"'+(f?" disabled":"")+' aria-label="'+DOW[(i+1)%7]+(habDone(h,k)?", done":"")+'"><i>'+ic+'</i><span>'+wd[i]+'</span></button>'}).join("");
   return'<div class="hflex"><div class="lgt"><div><b>'+esc(h.n)+'</b><div class="sm" style="'+(risk?"color:var(--warm);font-weight:600":"color:var(--mu)")+'">'+(got>=h.wk?got+' this week · goal met':got+' of '+h.wk+' this week')+' · '+status+'</div></div><span class="hs"><svg viewBox="0 0 24 24"><use href="#i-flame"/></svg>'+sm.c+'</span></div><div class="hdays">'+days+'</div></div>';
 }
 function flexHabitRows(k){
