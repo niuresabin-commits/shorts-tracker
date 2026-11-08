@@ -585,7 +585,7 @@ function renderToday(){
   else if(weekHasOtherRest(T)){rb.textContent="Rest day already used this week";rb.disabled=true}
   else{rb.textContent="Take today as my rest day";rb.disabled=false}
   rb.dataset.k=T;
-  $("sunday").innerHTML=dow===0?'<div class="card" style="background:var(--goods);border-color:transparent"><b>Sunday review</b><p class="sm" style="margin:4px 0 10px">Two minutes: what worked this week, and what you will change.</p><button class="btn2" data-a="tab" data-t="year">Open weekly review</button></div>':"";
+  $("sunday").innerHTML=dow===0&&!rvDone(curMk())?'<div class="card" style="background:var(--goods);border-color:transparent"><b>Sunday review</b><p class="sm" style="margin:4px 0 10px">Two minutes: what you changed this week, what worked, and what to change next.</p><button class="btn2" data-a="wkreview">Open weekly review</button></div>':"";
   const d=D.days[T]||{x:[]};
   $("xl").innerHTML=d.x.map((e,i)=>'<div class="xrow"><span>'+esc(e.t)+'</span><span><b class="g">+'+e.v+'</b><button class="x" data-a="xdel" data-i="'+i+'" aria-label="Remove">×</button></span></div>').join("");
   $("sug").innerHTML=SUGS_ALL[phase()].map((a,i)=>'<button class="chip" data-a="sug" data-i="'+i+'">+ '+esc(a[0])+' ('+a[1]+')</button>').join("");
@@ -758,10 +758,6 @@ function renderYear(){
   const mxv=Math.max(1,...rows.map(r=>r.v));
   $("mt").innerHTML='<table><tr><th>Month</th><th>Kept</th><th>Hours</th><th>Shorts</th><th>Avg views</th><th>Viewed</th></tr>'+rows.map(r=>'<tr'+(r.pre===T.slice(0,7)?' class="now"':"")+'><td><b>'+MON[r.m.getMonth()]+'</b></td><td class="num">'+r.dk+'</td><td class="num">'+(r.hs?Math.round(r.hs/360)/10+"h":"–")+'</td><td class="num">'+r.ls.length+'</td><td class="num">'+(r.ls.length?fmt(r.v)+'<span class="mbar" style="width:'+Math.round(r.v/mxv*100)+'%"></span>':"–")+'</td><td class="num">'+(r.ls.length?(Math.round(r.p*10)/10)+"%":"–")+'</td></tr>').join("")+'</table><div class="mu sm" style="margin-top:8px">Shorts here are the ones with 48-hour numbers.</div>';
   setVal("why",D.why);setVal("bs",D.base.s);setVal("bn",D.base.n);setVal("bt",D.base.t);baseRes();
-  const wk=key(mondayOf(NOW)),cur=D.rv[wk]||{};
-  $("rvwk").textContent="Week of "+fd(wk);setVal("rw",cur.w);setVal("rc",cur.c);
-  const past=Object.keys(D.rv).filter(x=>x!==wk&&(D.rv[x].w||D.rv[x].c)).sort().reverse();
-  $("rvh").innerHTML=past.length?past.map(x=>'<div class="rvh">Week of '+fd(x)+'</div>'+(D.rv[x].w?'<div class="rvt"><b>Worked:</b> '+esc(D.rv[x].w)+'</div>':"")+(D.rv[x].c?'<div class="rvt"><b>Change:</b> '+esc(D.rv[x].c)+'</div>':"")).join(""):"";
   renderMilestones();
 }
 /* ---------- milestones ---------- */
@@ -776,7 +772,7 @@ function milestoneList(){
   const bestRound=Object.keys(rounds).reduce((m,r)=>Math.max(m,rounds[r]),0);
   const gs=(+D.goal.h||0)*3600,goalDays=(()=>{if(!gs)return 0;const days={};D.ses.forEach(x=>days[x.d]=1);return Object.keys(days).filter(k=>secOn(k)>=gs).length})();
   const keptDays=ks.filter(x=>cnt(x)>=KEEP).length,fullDays=ks.filter(x=>cnt(x)===5).length;
-  const reviews=Object.keys(D.rv).filter(x=>D.rv[x].w||D.rv[x].c).length;
+  const reviews=Object.keys(D.rv).filter(x=>D.rv[x].w||D.rv[x].c||D.rv[x].ch).length;
   const maxV=dn.reduce((m,l)=>Math.max(m,l.v),0),over=dn.filter(l=>l.v>=1000).length;
   let run=0,bestRun=0;logsSorted().forEach(l=>{if(l.v>=1000){run++;if(run>bestRun)bestRun=run}else run=0});
   let bestWk=0;const wn=Math.min(60,Math.ceil((NOW-fk(D.start))/(7*864e5))+1);for(let o=0;o<wn;o++)bestWk=Math.max(bestWk,weekWork(o).sum);
@@ -849,8 +845,182 @@ function baseRes(){
 }
 function renderProg(){
   document.querySelectorAll("#v-prog .seg button").forEach(b=>b.classList.toggle("on",b.dataset.s===progSeg));
-  $("pstats").classList.toggle("on",progSeg==="stats");$("pyear").classList.toggle("on",progSeg==="year");
-  if(progSeg==="stats")renderStats();else renderYear();
+  $("pstats").classList.toggle("on",progSeg==="stats");$("pweeks").classList.toggle("on",progSeg==="weeks");$("pyear").classList.toggle("on",progSeg==="year");
+  if(progSeg==="stats")renderStats();else if(progSeg==="weeks")renderWeeks();else renderYear();
+}
+
+/* ---------- WEEKS dashboard + weekly review ---------- */
+/* Every number here is calculated from records you already keep (Shorts, work sessions, daily tasks); nothing is copied or stored.
+   The only things stored are the review's words and tags, as optional extra fields on the existing D.rv[weekStart] entry:
+   ch = what I changed, tg = tags, sv = when it was saved. Existing w (worked) and c (change next) are untouched. */
+const WK_TAGS=["Music","Hooks","Captions","Length","Pacing","Ending","Sound effects","Topic","Posting time"];
+let selWeek=null,wkMetric="views",wkRange=12,wdShown=null,wdExtra=[];   /* wdExtra: custom tags made this session, kept so an untick does not make the chip vanish */
+const curMk=()=>key(mondayOf(NOW));
+const mkOfKey=k=>key(mondayOf(fk(k)));
+const okKey=k=>typeof k==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(k);
+function wkLabel(mk){const e=addk(mk,6),a=fk(mk),b=fk(e);return fd(mk)+" – "+(a.getMonth()===b.getMonth()?b.getDate():fd(e))}
+const rvGet=mk=>{const r=D.rv[mk];return r&&typeof r==="object"&&!Array.isArray(r)?r:{}};
+const rvText=(r,f)=>String(r[f]==null?"":r[f]).trim();
+const rvTags=mk=>{const t=rvGet(mk).tg;return Array.isArray(t)?t.filter(x=>typeof x==="string"&&x):[]};
+const rvDone=mk=>{const r=rvGet(mk);return !!(r.sv||rvText(r,"w")||rvText(r,"c")||rvText(r,"ch"))};
+function rvEdit(mk,patch){D.rv[mk]=Object.assign({},rvGet(mk),patch);touchMeta();persist()}   /* merge, never replace */
+const wdStatus=r=>r.sv?"Saved "+fdl(key(new Date(r.sv)))+" · "+hhmm(r.sv):(rvText(r,"w")||rvText(r,"c")||rvText(r,"ch")||(Array.isArray(r.tg)&&r.tg.length))?"Draft kept":"Not written yet";
+const meanOf=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:null;
+function kf(n){if(n==null||isNaN(n))return"–";const a=Math.abs(n);let t;if(a>=1e6)t=(n/1e6).toFixed(a>=1e7?0:1)+"M";else if(a>=1e4)t=Math.round(n/1e3)+"k";else if(a>=1e3)t=(n/1e3).toFixed(1)+"k";else t=String(Math.round(n));return t.replace(/\.0(?=[kM]$)/,"")}
+const pc1=x=>x==null?"–":(Math.round(x*10)/10)+"%";
+const hr1=h=>(Math.round(h*10)/10)+"h";
+const WKM=[
+  {k:"views",n:"Views",kind:"n",v:w=>w.nd?w.views:null,s:kf,ax:kf},
+  {k:"avg",n:"Avg views",kind:"n",v:w=>w.nd?w.views/w.nd:null,s:kf,ax:kf},
+  {k:"vp",n:"Viewed %",kind:"p",v:w=>w.vp,s:pc1,ax:x=>Math.round(x)+"%"},
+  {k:"rt",n:"Retention",kind:"p",v:w=>w.rt,s:pc1,ax:x=>Math.round(x)+"%"},
+  {k:"subs",n:"Subs",kind:"a",v:w=>w.nd?w.subs:null,s:kf,ax:kf},
+  {k:"hrs",n:"Hours",kind:"n",v:w=>w.sec>0?w.sec/3600:null,s:hr1,ax:hr1}
+];
+const wkMet=k=>WKM.find(m=>m.k===k)||WKM[0];
+
+/* seconds worked on each day, in one pass (sessions that cross midnight are split) */
+function daySecMap(){
+  const m={},now=Date.now();
+  const add=segs=>segs.forEach(g=>{const e=g[1]==null?now:g[1];if(!(e>g[0]))return;let d=new Date(g[0]);d.setHours(0,0,0,0);
+    for(let guard=0;d.getTime()<e&&guard<400;d=ad(d,1),guard++){const a=d.getTime(),b=ad(d,1).getTime(),lo=Math.max(g[0],a),hi=Math.min(e,b);if(hi>lo){const k=key(d);m[k]=(m[k]||0)+(hi-lo)/1000}}});
+  D.ses.forEach(x=>add(x.segs));if(D.tm)add(D.tm.segs);
+  return m;
+}
+function wdKeyList(){
+  const cur=curMk();let first=mkOfKey(D.start);
+  const consider=k=>{if(okKey(k)){const m=mkOfKey(k);if(m<first)first=m}};
+  D.logs.forEach(l=>consider(ld(l)));Object.keys(D.days).forEach(consider);D.ses.forEach(x=>consider(x.d));Object.keys(D.rv).forEach(consider);
+  const out=[];for(let m=first;m<=cur;m=addk(m,7))out.push(m);
+  if(!out.length||out[out.length-1]!==cur)out.push(cur);
+  return out.slice(-104);
+}
+function wdStat(mk,sm,cur){
+  const ks=[0,1,2,3,4,5,6].map(i=>addk(mk,i)),a=ks[0],b=ks[6];
+  const all=D.logs.filter(l=>ld(l)>=a&&ld(l)<=b).sort((x,y)=>ld(x)<ld(y)?-1:ld(x)>ld(y)?1:0),dn=all.filter(l=>l.lg);
+  return{mk,ks,cur:mk===cur,n:all.length,nd:dn.length,views:dn.reduce((t,l)=>t+(+l.v||0),0),
+    vp:meanOf(dn.filter(l=>+l.p>0).map(l=>+l.p)),rt:meanOf(dn.map(ret).filter(x=>x!=null)),subs:dn.reduce((t,l)=>t+(+l.s||0),0),
+    sec:ks.reduce((t,k)=>t+(sm[k]||0),0),kept:ks.filter(kept).length,days:ks.filter(k=>k<=T).length,rev:rvGet(mk),shorts:all};
+}
+function wdWeeks(){const sm=daySecMap(),cur=curMk();return wdKeyList().map(mk=>wdStat(mk,sm,cur))}
+
+function wdDelta(met,a,b){
+  const none='<span class="d">–</span>';
+  if(a==null||b==null)return none;
+  let d,txt;
+  if(met.kind==="p"){d=Math.round((a-b)*10)/10;txt=Math.abs(d)+" pt"}
+  else if(met.kind==="a"){d=Math.round(a-b);txt=String(Math.abs(d))}
+  else{if(!b)return none;d=Math.round((a-b)/b*100);txt=Math.abs(d)+"%"}
+  if(d===0)return'<span class="d">= 0</span>';
+  return'<span class="d '+(d>0?"up":"dn")+'">'+(d>0?"▲ ":"▼ ")+txt+'</span>';
+}
+function wdNice(x,pct){if(!(x>0))return pct?100:1;const e=Math.pow(10,Math.floor(Math.log10(x))),f=x/e,steps=[1,1.2,1.6,2,3,4,5,6,8,10];let m=10;for(let i=0;i<steps.length;i++){if(f<=steps[i]+1e-9){m=steps[i];break}}const r=m*e;return pct?Math.min(100,r):r}
+const hasChange=w=>!!(rvText(w.rev,"ch")||rvTags(w.mk).length);
+
+function wdChart(shown,selMk,met,avgv){
+  const W=340,H=204,L=34,R=8,Tp=20,B=42,n=shown.length,pw=(W-L-R)/n,bw=Math.min(pw*.62,30);
+  const vals=shown.map(w=>met.v(w)),nums=vals.filter(v=>v!=null),mx=wdNice(nums.length?Math.max.apply(null,nums):0,met.kind==="p");
+  const Y=v=>Tp+(1-v/mx)*(H-Tp-B),X=i=>L+i*pw,step=Math.max(1,Math.ceil(n/10)),big=n<=8;
+  let s='<svg class="ch" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc(met.n)+' by week, '+n+' weeks">'
+   +'<defs><pattern id="wdh" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke-width="2" style="stroke:var(--ac)"/></pattern></defs>';
+  [0,.5,1].forEach(f=>{const v=mx*f;s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="var(--ln)"/>'+(nums.length?'<text x="'+(L-5)+'" y="'+(Y(v)+3.5)+'" text-anchor="end">'+met.ax(v)+'</text>':"")});
+  if(!nums.length)s+='<text x="'+((L+W-R)/2)+'" y="'+((Tp+H-B)/2)+'" text-anchor="middle">No numbers for these weeks yet</text>';
+  let mxi=-1;vals.forEach((v,i)=>{if(!shown[i].cur&&v!=null&&(mxi<0||v>vals[mxi]))mxi=i});
+  let prevMon=null;
+  shown.forEach((w,i)=>{
+    const sel=w.mk===selMk,v=vals[i],cx=X(i)+pw/2;
+    if(sel)s+='<rect x="'+X(i)+'" y="'+Tp+'" width="'+pw+'" height="'+(Y(0)-Tp)+'" style="fill:var(--acs);opacity:.55"/>';
+    if(v!=null){const y=Y(v),h=Math.max(1.5,Y(0)-y);
+      s+=w.cur?'<rect x="'+(cx-bw/2)+'" y="'+y+'" width="'+bw+'" height="'+h+'" rx="2" '+(h>=6?'fill="url(#wdh)" ':'fill="none" ')+'stroke-dasharray="3 2" stroke-width="1" style="stroke:var(--ac)"/>'
+              :'<rect x="'+(cx-bw/2)+'" y="'+y+'" width="'+bw+'" height="'+h+'" rx="2" style="fill:var(--ac);opacity:'+(sel?1:.55)+'"/>';
+      if(big||sel||i===mxi||i===n-1)s+='<text x="'+cx+'" y="'+(y-4)+'" text-anchor="middle" style="'+(sel?"fill:var(--ink);font-weight:600":"")+'">'+met.s(v)+'</text>'}
+    else s+='<circle cx="'+cx+'" cy="'+Y(0)+'" r="1.6" style="fill:var(--ln)"/>';
+    if((n-1-i)%step===0){const mo=fk(w.mk).getMonth();
+      s+='<text x="'+cx+'" y="'+(H-B+14)+'" text-anchor="middle" style="'+(sel?"fill:var(--ink);font-weight:600":"")+'">'+fk(w.mk).getDate()+'</text>';
+      if(prevMon!==mo){s+='<text x="'+cx+'" y="'+(H-B+25)+'" text-anchor="middle" style="font-size:8px;letter-spacing:.08em">'+MON[mo].toUpperCase()+'</text>';prevMon=mo}}
+    if(hasChange(w))s+='<circle cx="'+cx+'" cy="'+(H-7)+'" r="3" style="fill:var(--warm)"/>';
+    s+='<rect x="'+X(i)+'" y="0" width="'+pw+'" height="'+H+'" fill="transparent" data-a="wkpick" data-k="'+w.mk+'" style="cursor:pointer"><title>'+esc(wkLabel(w.mk))+'</title></rect>';
+  });
+  if(avgv!=null)s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(avgv)+'" y2="'+Y(avgv)+'" stroke-dasharray="4 3" style="stroke:var(--warm)"/>';
+  return s+'</svg>';
+}
+function wdShortsTable(w){
+  if(!w.shorts.length)return'<p class="sm mu" style="padding:14px 12px">No Shorts were published this week.</p>';
+  const dn=w.shorts.filter(l=>l.lg);
+  const rows=w.shorts.map(l=>{const r=ret(l),sub=DOW[fk(ld(l)).getDay()].slice(0,3)+(l.g&&l.g!=="none"?" · "+l.g:"");
+    return'<tr><td><div class="wtt">'+esc(l.t)+'</div><div class="wts">'+esc(sub)+'</div></td><td>'+(l.lg?fmt(l.v):'<span class="mu">'+(ld(l)>T?"sched":"wait")+'</span>')+'</td><td>'+(l.lg&&+l.p>0?pc1(+l.p):"–")+'</td><td>'+(l.lg&&r!=null?r+"%":"–")+'</td><td>'+(l.lg?(+l.s||0):"–")+'</td></tr>'}).join("");
+  const tot='<tr class="tot"><td><div class="wtt">Total</div><div class="wts">'+dn.length+' with data</div></td><td>'+(dn.length?fmt(w.views):"–")+'</td><td>'+pc1(w.vp)+'</td><td>'+pc1(w.rt)+'</td><td>'+(dn.length?w.subs:"–")+'</td></tr>';
+  return'<table class="wt cmp"><thead><tr><th>Short</th><th>Views</th><th>View%</th><th>Ret%</th><th>Subs</th></tr></thead><tbody>'+rows+tot+'</tbody></table>';
+}
+function wdAllTable(weeks,sel){
+  const vm=WKM[0],rows=weeks.slice().reverse().map((w,ri)=>{
+    const idx=weeks.length-1-ri,p=idx>0?weeks[idx-1]:null,tg=rvTags(w.mk),ch=rvText(w.rev,"ch");
+    const chg=(tg.length||ch)?'<div class="chg">'+tg.slice(0,2).map(t=>'<span class="tg">'+esc(t)+'</span>').join("")+(tg.length>2?'<span class="mu">+'+(tg.length-2)+'</span>':"")+(ch?'<span>'+esc(ch.length>34?ch.slice(0,34)+"…":ch)+'</span>':"")+'</div>':(rvDone(w.mk)?'<span class="mu">review ✓</span>':'<span class="mu">–</span>');
+    return'<tr data-a="wkpick" data-k="'+w.mk+'"'+(w.mk===sel?' class="sel"':"")+'><td>'+wkLabel(w.mk)+(w.cur?'<span class="pill">now</span>':"")+'</td><td>'+w.n+'</td><td>'+(w.nd?kf(w.views):"–")+'</td><td>'+(w.nd?kf(w.views/w.nd):"–")+'</td><td>'+pc1(w.vp)+'</td><td>'+pc1(w.rt)+'</td><td>'+(w.nd?w.subs:"–")+'</td><td>'+(w.sec>0?hr1(w.sec/3600):"–")+'</td><td>'+(w.cur?'<span class="d">–</span>':wdDelta(vm,vm.v(w),p?vm.v(p):null))+'</td><td style="text-align:left">'+chg+'</td></tr>'}).join("");
+  return'<table class="wt"><thead><tr><th>Week</th><th>Sh</th><th>Views</th><th>Avg</th><th>View%</th><th>Ret%</th><th>Subs</th><th>Hrs</th><th>Δ Views</th><th style="text-align:left">Changed</th></tr></thead><tbody>'+rows+'</tbody></table>';
+}
+function wdTagBlock(weeks,met){
+  const rows=weeks.filter(w=>!w.cur&&met.v(w)!=null),by={};
+  rows.forEach(w=>rvTags(w.mk).forEach(t=>{(by[t]=by[t]||[]).push(w)}));
+  const tags=Object.keys(by);
+  if(!tags.length)return'<p class="sm mu" style="padding:14px 12px">Tag the changes you make in your weekly review. Once a tag appears in a few weeks, this compares those weeks with the rest.</p>';
+  const body=tags.sort((a,b)=>by[b].length-by[a].length).map(t=>{
+    const inW=by[t],out=rows.filter(w=>inW.indexOf(w)<0),a=meanOf(inW.map(met.v)),b=out.length?meanOf(out.map(met.v)):null,enough=inW.length>=2&&out.length>=2;
+    return'<tr><td>'+esc(t)+'</td><td>'+inW.length+'</td><td>'+met.s(a)+'</td><td>'+(b==null?"–":met.s(b))+'</td><td>'+(enough?wdDelta(met,a,b):'<span class="d">needs more</span>')+'</td></tr>'}).join("");
+  return'<div class="tw"><table class="wt"><thead><tr><th>Tag</th><th>Weeks</th><th>'+esc(met.n)+'</th><th>Other weeks</th><th>Diff</th></tr></thead><tbody>'+body+'</tbody></table></div><p class="sm mu" style="padding:10px 12px 12px">Weekly averages for complete weeks. These are clues, not proof: Shorts vary a lot, so trust a pattern only after several weeks.</p>';
+}
+function wdTagUniverse(){
+  const u=WK_TAGS.slice(),has=t=>u.some(x=>x.toLowerCase()===t.toLowerCase());
+  Object.keys(D.rv).forEach(k=>rvTags(k).forEach(t=>{if(!has(t))u.push(t)}));
+  wdExtra.forEach(t=>{if(!has(t))u.push(t)});
+  return u;
+}
+function wdBlur(){const a=document.activeElement;if(a&&a.closest&&a.closest("#pweeks")&&/^(INPUT|TEXTAREA)$/.test(a.tagName))a.blur()}
+function renderWeeks(){
+  const weeks=wdWeeks(),cur=curMk();
+  if(!selWeek||!weeks.some(w=>w.mk===selWeek))selWeek=(weeks.length>=2&&dow!==0)?weeks[weeks.length-2].mk:cur;
+  const met=wkMet(wkMetric),i=weeks.findIndex(w=>w.mk===selWeek),w=weeks[i],p=i>0?weeks[i-1]:null;
+  /* week picker */
+  $("wdhead").innerHTML='<button class="btn2" data-a="wkprev" aria-label="Previous week"'+(i<=0?" disabled":"")+'>‹</button>'
+   +'<div class="wdlab"><b>'+wkLabel(w.mk)+'</b><span>'+(w.cur?"This week · day "+w.days+" of 7":"Complete week")+'</span>'+(w.cur?"":'<button class="link" data-a="wkcur">Jump to this week</button>')+'</div>'
+   +'<button class="btn2" data-a="wknext" aria-label="Next week"'+(i>=weeks.length-1?" disabled":"")+'>›</button>';
+  /* key numbers */
+  $("wdkm").textContent=w.cur?"so far":"vs prior week";
+  const dl=m=>w.cur?'<span class="d">so far</span>':wdDelta(m,m.v(w),p?m.v(p):null),M=wkMet;
+  const tiles=[["Views",w.nd?kf(w.views):"–",dl(M("views"))],["Avg views",w.nd?kf(w.views/w.nd):"–",dl(M("avg"))],["Viewed %",pc1(w.vp),dl(M("vp"))],["Retention",pc1(w.rt),dl(M("rt"))],
+    ["Subs",w.nd?String(w.subs):"–",dl(M("subs"))],["Shorts",String(w.n),'<span class="d">'+w.nd+' with data</span>'],["Hours",w.sec>0?hr1(w.sec/3600):"–",dl(M("hrs"))],["Days kept",w.kept+"/"+(w.cur?w.days:7),'<span class="d">'+(w.cur?"so far":"of 7")+'</span>']];
+  $("wdkpi").innerHTML=tiles.map(t=>'<div class="kpi"><div class="l">'+t[0]+'</div><b>'+t[1]+'</b>'+t[2]+'</div>').join("");
+  /* chart */
+  const shownN=wkRange?Math.max(wkRange,weeks.length-i):weeks.length,shown=weeks.slice(-shownN);
+  $("wdct").textContent=met.n+" · "+shown.length+" week"+(shown.length===1?"":"s");
+  $("wdrng").innerHTML=[["8W",8],["12W",12],["26W",26],["ALL",0]].map(r=>'<button data-a="wkrange" data-r="'+r[1]+'"'+(r[1]===wkRange?' class="on"':"")+'>'+r[0]+'</button>').join("");
+  $("wdmet").innerHTML=WKM.map(m=>'<button data-a="wkmetric" data-m="'+m.k+'"'+(m.k===met.k?' class="on"':"")+'>'+m.n+'</button>').join("");
+  const comp=shown.filter(x=>!x.cur&&met.v(x)!=null),best=comp.length?comp.reduce((m,x)=>met.v(x)>met.v(m)?x:m):null,avgv=comp.length>=2?meanOf(comp.map(met.v)):null;
+  $("wdchart").innerHTML=wdChart(shown,w.mk,met,avgv);
+  $("wdcf").innerHTML=(best?'<span>BEST <b>'+wkLabel(best.mk)+'</b> · '+met.s(met.v(best))+(hasChange(best)?' · '+(rvTags(best.mk).slice(0,2).map(esc).join(", ")||"change noted"):"")+'</span>':'<span>No complete week with '+esc(met.n.toLowerCase())+' yet.</span>')
+    +'<span class="wdlg"><span><i class="g1"></i>change noted</span>'+(avgv!=null?'<span><i class="g2"></i>avg '+met.s(avgv)+'</span>':"")+'<span><i class="g3"></i>in progress</span></span>'
+    +'<span>Shorts are counted by publish date, once their 48-hour numbers are in.</span>';
+  /* selected week */
+  $("wdwk").textContent=wkLabel(w.mk);
+  const tg=rvTags(w.mk),ch=rvText(w.rev,"ch");
+  $("wdnote").innerHTML='<div class="callout"><span class="cl">CHANGED</span>'+((tg.length||ch)?tg.map(t=>'<span class="tg">'+esc(t)+'</span>').join("")+(ch?'<span class="ctx">'+esc(ch)+'</span>':""):'<span class="mu">Nothing recorded for this week.</span><button class="link" data-a="wdgo">Add it in the review ↓</button>')+'</div>';
+  $("wdshorts").innerHTML=wdShortsTable(w);
+  /* review editor */
+  const force=wdShown!==w.mk;wdShown=w.mk;
+  const fill=(id,v)=>{const el=$(id);if(force||document.activeElement!==el)el.value=v==null?"":v};
+  $("wdrt").textContent=wkLabel(w.mk);$("wdstat").textContent=wdStatus(w.rev);
+  fill("wd1",w.rev.ch);fill("wd2",w.rev.w);fill("wd3",w.rev.c);
+  $("wdtags").innerHTML=wdTagUniverse().map(t=>'<button type="button" class="chip'+(tg.indexOf(t)>=0?" on":"")+'" data-a="wtog" data-t="'+esc(t)+'">'+esc(t)+'</button>').join("");
+  /* all weeks + tags vs results */
+  $("wdall").innerHTML=wdAllTable(weeks,w.mk);
+  $("wdtm").textContent=met.n;$("wdtag").innerHTML=wdTagBlock(weeks,met);
+}
+function wdSave(){
+  const mk=selWeek;if(!mk)return;
+  const f={ch:$("wd1").value.trim(),w:$("wd2").value.trim(),c:$("wd3").value.trim()};
+  if(!f.ch&&!f.w&&!f.c&&!rvTags(mk).length){toast("Write something first");return}
+  rvEdit(mk,Object.assign(f,{sv:Date.now()}));
+  toast("Review saved");renderWeeks();
 }
 
 /* ---------- MORE ---------- */
@@ -892,12 +1062,12 @@ $("wl").innerHTML="<p class='mu'>Search these exact phrases on YouTube and pick 
 const VIEWS={today:renderToday,time:renderTime,clips:renderClips,shorts:renderShorts,prog:renderProg,more:renderMore};
 function render(){renderHead();VIEWS[VIEW]()}
 function go(t,noHash){
-  if(t==="year"){progSeg="year";t="prog"}else if(t==="stats"){progSeg="stats";t="prog"}
+  if(t==="year"){progSeg="year";t="prog"}else if(t==="stats"){progSeg="stats";t="prog"}else if(t==="weeks"){progSeg="weeks";t="prog"}
   if(t==="plan")t="more";if(t==="log")t="shorts";
   if(!VIEWS[t])t="today";VIEW=t;
   document.querySelectorAll(".app>.view").forEach(v=>v.classList.toggle("on",v.id==="v-"+t));
   document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===t));
-  render();if(!noHash){try{history.replaceState(null,"","#"+(t==="prog"&&progSeg==="year"?"year":t))}catch(e){}}
+  render();if(!noHash){try{history.replaceState(null,"","#"+(t==="prog"&&progSeg!=="stats"?progSeg:t))}catch(e){}}
   window.scrollTo(0,0);
 }
 
@@ -908,7 +1078,18 @@ document.addEventListener("click",e=>{
   const a=t.dataset.a,id=t.dataset.id;
   if(a==="tab")go(t.dataset.t);
   else if(a==="gosync")go("more");
-  else if(a==="pseg"){progSeg=t.dataset.s;renderProg();window.scrollTo(0,0)}
+  else if(a==="pseg"){progSeg=t.dataset.s;renderProg();try{history.replaceState(null,"","#"+(progSeg==="stats"?"prog":progSeg))}catch(e){}window.scrollTo(0,0)}
+  else if(a==="wkpick"){wdBlur();selWeek=t.dataset.k;renderWeeks()}
+  else if(a==="wkprev"||a==="wknext"){wdBlur();const ks=wdKeyList(),j=ks.indexOf(selWeek)+(a==="wknext"?1:-1);if(j>=0&&j<ks.length){selWeek=ks[j];renderWeeks()}}
+  else if(a==="wkcur"){wdBlur();selWeek=curMk();renderWeeks()}
+  else if(a==="wkmetric"){wkMetric=t.dataset.m;renderWeeks()}
+  else if(a==="wkrange"){wkRange=+t.dataset.r;renderWeeks()}
+  else if(a==="wtog"){const mk=selWeek;if(!mk)return;const t0=t.dataset.t,cur=rvTags(mk);rvEdit(mk,{tg:cur.indexOf(t0)>=0?cur.filter(x=>x!==t0):cur.concat(t0)});renderWeeks()}
+  else if(a==="wtagadd"){const mk=selWeek;let v=$("wdnew").value.trim().replace(/\s+/g," ").slice(0,24);if(!mk||!v)return;
+    const hit=wdTagUniverse().find(u=>u.toLowerCase()===v.toLowerCase());if(hit)v=hit;const cur=rvTags(mk);if(!hit&&wdExtra.indexOf(v)<0)wdExtra.push(v);if(cur.indexOf(v)<0)rvEdit(mk,{tg:cur.concat(v)});$("wdnew").value="";renderWeeks()}
+  else if(a==="wdsave")wdSave();
+  else if(a==="wdgo"){try{$("wdrev").scrollIntoView({block:"start",behavior:"smooth"})}catch(e){}}
+  else if(a==="wkreview"){selWeek=curMk();go("weeks");try{$("wdrev").scrollIntoView({block:"start"})}catch(e){}}
   else if(a==="rest")toggleRest(t.dataset.k||T);
   else if(a==="xadd"){const x=$("xt");if(!x.value.trim())return;rec(T).x.push({t:x.value.trim(),v:+$("xv").value});x.value="";touchDay(T);persist();render()}
   else if(a==="xdel"){rec(T).x.splice(+t.dataset.i,1);touchDay(T);persist();render()}
@@ -1020,7 +1201,11 @@ function debounce(id,fn){clearTimeout(dbT[id]);dbT[id]=setTimeout(fn,500)}
 function onField(id,fn){$(id).addEventListener("input",()=>debounce(id,()=>{fn();touchMeta();persist();if(id[0]==="b")baseRes()}))}
 onField("why",()=>{D.why=$("why").value});
 ["bs","bn","bt"].forEach(id=>onField(id,()=>{D.base={s:$("bs").value,n:$("bn").value,t:$("bt").value}}));
-["rw","rc"].forEach(id=>onField(id,()=>{const wk=key(mondayOf(NOW));D.rv[wk]={w:$("rw").value,c:$("rc").value}}));
+[["wd1","ch"],["wd2","w"],["wd3","c"]].forEach(pr=>$(pr[0]).addEventListener("input",()=>{
+  const mk=selWeek,val=$(pr[0]).value;if(!mk)return;
+  debounce(pr[0]+mk,()=>{rvEdit(mk,{[pr[1]]:val});if(selWeek===mk&&VIEW==="prog"&&progSeg==="weeks")$("wdstat").textContent=wdStatus(rvGet(mk))});
+}));
+$("wdnew").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();const b=document.querySelector('[data-a="wtagadd"]');if(b)b.click()}});
 $("goalh").addEventListener("input",()=>debounce("goalh",()=>{D.goal.h=Math.max(0,+$("goalh").value||0);touchMeta();persist()}));
 document.addEventListener("input",e=>{
   const t=e.target;if(!t.dataset||!t.dataset.f)return;
@@ -1064,12 +1249,12 @@ $("imp").addEventListener("change",e=>{
 (function(){
   let h="";try{h=location.hash.slice(1)}catch(e){}
   clearMake();clearSes();
-  go(h&&(VIEWS[h]||["year","plan","log","stats"].indexOf(h)>=0)?h:"today",true);
+  go(h&&(VIEWS[h]||["year","plan","log","stats","weeks"].indexOf(h)>=0)?h:"today",true);
   setSync(SYNC_ON?(AUTH?"synced":"signedout"):"local");
   if(!AUTH&&SYNC_ON)setSync("signedout");
 })();
 window.addEventListener("hashchange",()=>{try{const h=location.hash.slice(1);if(h&&h!==VIEW)go(h,true)}catch(e){}});
-function newDayCheck(){if(key(new Date())!==T){NOW=new Date();T=key(NOW);dow=NOW.getDay();selDay=T;selSes=T;clearMake();clearSes();render()}}
+function newDayCheck(){if(key(new Date())!==T){NOW=new Date();T=key(NOW);dow=NOW.getDay();selDay=T;selSes=T;selWeek=null;clearMake();clearSes();render()}}
 document.addEventListener("visibilitychange",()=>{if(!document.hidden){newDayCheck();syncNow();tickTimer()}});
 window.addEventListener("online",()=>syncNow());
 window.addEventListener("focus",newDayCheck);

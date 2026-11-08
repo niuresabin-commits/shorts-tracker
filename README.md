@@ -6,7 +6,7 @@ A personal tracker for daily habits, a YouTube Shorts pipeline and real work hou
 - **Time**: start/pause/finish timer, categories, weekly hours, daily target, sessions you can edit.
 - **Clips**: library of YouTube links, marked used automatically.
 - **Shorts**: make and schedule Shorts, 48-hour numbers, 7-day check.
-- **Progress**: stats, habits, and a one-year view.
+- **Progress**: stats, a **Weeks** dashboard (weekly views, retention, subs and hours with your weekly review and tags), and a one-year view.
 - **More**: sync, settings, backup, reset.
 
 ## Run it

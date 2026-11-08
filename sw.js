@@ -1,11 +1,12 @@
 /* Service worker: keeps the app working offline.
    App files: network first (so updates arrive as soon as you are online), cache as fallback.
    Fonts: cache first. Supabase calls are never cached. */
-const V = "shorts-tracker-v2";
+const V = "shorts-tracker-v3";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "config.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  /* Fetch the whole app as one fresh set (bypassing the browser cache) so a device never mixes old and new files. */
+  e.waitUntil(caches.open(V).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", e => {

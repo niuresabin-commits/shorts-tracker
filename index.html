@@ -233,7 +233,7 @@
 
   <!-- PROGRESS -->
   <section id="v-prog" class="view">
-    <div class="seg" role="tablist"><button data-a="pseg" data-s="stats" class="on">Stats</button><button data-a="pseg" data-s="year">Year</button></div>
+    <div class="seg seg3" role="tablist"><button data-a="pseg" data-s="stats" class="on">Stats</button><button data-a="pseg" data-s="weeks">Weeks</button><button data-a="pseg" data-s="year">Year</button></div>
 
     <div id="pstats" class="view on" style="gap:14px">
       <h2 class="sec">The 1,000-view floor</h2>
@@ -252,6 +252,48 @@
       <div class="card" id="xpc"></div>
       <h2 class="sec">Personal bests</h2>
       <div class="card" id="pb"></div>
+    </div>
+
+    <div id="pweeks" class="view" style="gap:12px">
+      <div class="wdbar" id="wdhead"></div>
+      <div class="panel">
+        <header><span>Key numbers</span><span id="wdkm"></span></header>
+        <div class="kpis" id="wdkpi"></div>
+      </div>
+      <div class="panel">
+        <header><span id="wdct"></span><span class="rng" id="wdrng"></span></header>
+        <div class="wdtool" id="wdmet"></div>
+        <div class="wdsvg" id="wdchart"></div>
+        <div class="wdfoot" id="wdcf"></div>
+      </div>
+      <div class="panel">
+        <header><span>Shorts that week</span><span id="wdwk"></span></header>
+        <div id="wdnote"></div>
+        <div class="tw" id="wdshorts"></div>
+      </div>
+      <div class="panel" id="wdrev">
+        <header><span>Review · <b id="wdrt"></b></span><span id="wdstat"></span></header>
+        <div class="wdbody">
+          <label class="fld"><span>What I changed this week</span><textarea id="wd1" placeholder="e.g. Added music to every Short"></textarea></label>
+          <div>
+            <div class="eyebrow" style="margin-bottom:8px">Tags (optional)</div>
+            <div class="chips" id="wdtags"></div>
+            <div class="g2" style="grid-template-columns:minmax(0,3fr) minmax(0,1fr);margin-top:10px"><input id="wdnew" placeholder="Add your own tag" maxlength="24" aria-label="New tag"><button class="btn2" data-a="wtagadd">Add</button></div>
+          </div>
+          <label class="fld"><span>What worked</span><textarea id="wd2" placeholder="What did you notice in the numbers?"></textarea></label>
+          <label class="fld"><span>What I'll change next week</span><textarea id="wd3"></textarea></label>
+          <button class="btn" data-a="wdsave">Save review</button>
+          <p class="sm mu">Everything you type is kept automatically. Save marks the review as done.</p>
+        </div>
+      </div>
+      <div class="panel">
+        <header><span>All weeks</span><span>tap a row</span></header>
+        <div class="tw wdtw" id="wdall"></div>
+      </div>
+      <div class="panel">
+        <header><span>Changes vs results</span><span id="wdtm"></span></header>
+        <div id="wdtag"></div>
+      </div>
     </div>
 
     <div id="pyear" class="view" style="gap:14px">
@@ -278,11 +320,9 @@
         <div class="pv" id="bres"></div>
       </div>
       <h2 class="sec">Weekly review</h2>
-      <div class="card form">
-        <div class="eyebrow" id="rvwk"></div>
-        <label class="fld"><span>What worked this week</span><textarea id="rw"></textarea></label>
-        <label class="fld"><span>What I'll change next week</span><textarea id="rc"></textarea></label>
-        <div id="rvh"></div>
+      <div class="card">
+        <p class="sm mu">Write and read your weekly reviews in the Weeks dashboard, next to that week's numbers.</p>
+        <button class="btn2" style="margin-top:10px" data-a="pseg" data-s="weeks">Open Weeks</button>
       </div>
       <h2 class="sec">Milestones</h2>
       <div class="card" id="bdg"></div>
