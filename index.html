@@ -114,7 +114,7 @@
       <div><div class="eyebrow">Finish session</div><b id="fint" style="font-size:20px"></b></div>
       <label class="fld"><span>Category</span><select id="f1"></select></label>
       <label class="fld"><span>What did you work on? (optional)</span><input id="f2" placeholder="e.g. Edited 2 Shorts"></label>
-      <label class="fld"><span>Stopped at (change it if you stopped earlier)</span><input id="f3" type="time"></label>
+      <label class="fld"><span>Stopped at (change it if you stopped earlier)</span><input id="f3" type="text" placeholder="4:40pm or 16:40" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
       <div class="err" id="ferr" role="alert"></div>
       <button class="btn" type="submit">Save session</button>
       <div class="row"><button class="link" type="button" data-a="fresume">Resume timer</button><button class="link bad" type="button" data-a="fdisc">Discard</button></div>
@@ -135,14 +135,20 @@
       <form class="form" id="sf" autocomplete="off" style="margin-top:12px">
         <p class="sm mu">Forgot to start the timer? Add the time here. It is marked "added by hand" so your tracked hours stay honest.</p>
         <label class="fld"><span>Category</span><select id="s1"></select></label>
-        <label class="fld"><span>Date</span><input id="s2" type="date"></label>
-        <div class="g2">
-          <label class="fld"><span>Started</span><input id="s3" type="time"></label>
-          <label class="fld"><span>Stopped</span><input id="s4" type="time"></label>
+        <div class="fld"><span>Day</span>
+          <div class="chips"><button type="button" class="chip" data-a="sday" data-d="0" id="sd0">Today</button><button type="button" class="chip" data-a="sday" data-d="1" id="sd1">Yesterday</button></div>
+          <input id="s2" type="date" aria-label="Date">
         </div>
+        <div class="g2">
+          <label class="fld"><span>Started</span><input id="s3" type="text" placeholder="2:30pm or 14:30" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+          <label class="fld"><span>Stopped</span><input id="s4" type="text" placeholder="4:40pm or 16:40" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+        </div>
+        <div class="chips"><button type="button" class="chip" data-a="snow">Stopped just now</button></div>
+        <div class="insight" id="spv" aria-live="polite"></div>
+        <div class="row" id="sfix"></div>
         <label class="fld"><span>Note (optional)</span><input id="s5" placeholder="What did you work on?"></label>
         <div class="err" id="serr" role="alert"></div>
-        <button class="btn" type="submit" id="ssub">Add session</button>
+        <button class="btn" type="submit" id="ssave">Add session</button>
         <button class="link" type="button" data-a="scancel" id="scan" hidden>Cancel editing</button>
       </form>
     </details>
@@ -235,7 +241,7 @@
       <h2 class="sec">Week by week</h2>
       <div class="card"><div class="tiles" id="kp"></div></div>
       <h2 class="sec">Views per Short</h2>
-      <div class="card" id="c2"></div>
+      <div class="card" id="vwc"></div>
       <h2 class="sec">You then, you now</h2>
       <div class="card" id="then"></div>
       <h2 class="sec">What's working</h2>
@@ -243,7 +249,7 @@
       <h2 class="sec">Habits</h2>
       <div class="card" id="hstat"></div>
       <h2 class="sec">XP, last 14 days</h2>
-      <div class="card" id="c1"></div>
+      <div class="card" id="xpc"></div>
       <h2 class="sec">Personal bests</h2>
       <div class="card" id="pb"></div>
     </div>

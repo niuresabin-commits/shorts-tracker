@@ -359,9 +359,10 @@ function openFin(){
 }
 function saveFin(e){
   e.preventDefault();if(!D.tm)return;
-  const segs=D.tm.segs.map(g=>g.slice()),last=segs[segs.length-1],v=$("f3").value;
+  const segs=D.tm.segs.map(g=>g.slice()),last=segs[segs.length-1],v=$("f3").value.trim();
   let end=finEnd;
-  if(v&&v!==hhmm(finEnd)){const p=v.split(":"),b=new Date(finEnd);b.setHours(+p[0],+p[1],0,0);end=b.getTime();if(end>finEnd)end-=864e5}
+  if(v&&v!==hhmm(finEnd)){const mm=parseClock(v);if(mm==null){$("ferr").textContent="I could not read that time. Try 4:40pm or 16:40.";return}
+    const b=new Date(finEnd);b.setHours(Math.floor(mm/60),mm%60,0,0);end=b.getTime();if(end>finEnd)end-=864e5}
   if(end<=last[0]){$("ferr").textContent="The stop time must be after the last start ("+hhmm(last[0])+").";return}
   last[1]=end;
   const x={id:newId(),d:key(new Date(segs[0][0])),segs,cat:$("f1").value,note:$("f2").value.trim(),src:"timer"};
@@ -433,20 +434,83 @@ function renderTime(){
   if(D.tm&&key(new Date(D.tm.segs[0][0]))===selSes)h='<div class="srow"><div><div class="tcat"><i class="dot" style="background:'+catColor(D.tm.cat)+'"></i>'+esc(catName(D.tm.cat))+'</div><div class="mu sm">Running now. Finish it above to save.</div></div><b class="num">'+fmtDur(tmSec(D.tm,Date.now()))+'</b></div>'+h;
   $("sesl").innerHTML=(h||'<span class="mu">No sessions on this day.</span>')+(list.length?'<div class="kv"><span>Total for the day</span><b class="num">'+fmtDur(secOn(selSes))+'</b></div>':"");
   catOptions("s1",$("s1").value||D.lastCat);
-  if(!editSes&&!$("s2").value)$("s2").value=selSes;
+  if(!editSes&&sAuto)$("s2").value=key(new Date());
+  renderSesPreview();
 }
-function clearSes(){editSes=null;$("s3").value="";$("s4").value="";$("s5").value="";$("s2").value=selSes;$("serr").textContent="";$("ssub").textContent="Add session";$("scan").hidden=true;$("sdets").textContent="Add a session by hand"}
+/* ---------- add a session by hand ---------- */
+/* Times are typed (2:30pm, 14:30, 1430, 230p). Native time pickers were unreliable, and the day always follows the real clock
+   unless you pick one, so an app left open overnight can never save to a stale date. */
+let sAuto=true,sfixLast="";
+function parseClock(str){
+  const t=String(str||"").trim().toLowerCase().replace(/\s+/g,"").replace(/\./g,":");
+  const m=t.match(/^(\d{1,2})(?::?(\d{2}))?(am|pm|a|p)?$/);
+  if(!m)return null;
+  let h=+m[1];const mi=m[2]==null?0:+m[2],mer=m[3]?m[3][0]:"";
+  if(mi>59)return null;
+  if(mer){if(h<1||h>12)return null;if(mer==="p"&&h<12)h+=12;if(mer==="a"&&h===12)h=0}
+  else if(h>23)return null;
+  return h*60+mi;
+}
+const fmt12=m=>{const h=Math.floor(m/60)%24;return((h+11)%12+1)+":"+p2(m%60)+" "+(h<12?"AM":"PM")};
+const fmt24=m=>p2(Math.floor(m/60)%24)+":"+p2(m%60);
+const msOf=(dk,m)=>{const d=fk(dk);d.setHours(Math.floor(m/60),m%60,0,0);return d.getTime()};
+const nowMin=()=>{const d=new Date();return d.getHours()*60+d.getMinutes()};
+const sesDate=()=>sAuto?key(new Date()):$("s2").value;
+function evalSes(){
+  const out={ok:false,fix:[],msg:""},dk=sesDate(),r3=$("s3").value.trim(),r4=$("s4").value.trim();
+  if(!dk){out.msg="Pick the day.";return out}
+  if(!r3||!r4){out.msg="Enter when you started and stopped, like 2:30pm and 4:40pm.";out.quiet=true;return out}
+  const a=parseClock(r3),b=parseClock(r4);
+  if(a==null||b==null){out.msg="I could not read the "+(a==null?"start":"stop")+" time. Try 2:30pm or 14:30.";return out}
+  const now=Date.now(),today=key(new Date()),hasMer=/(am|pm|a|p)$/i;
+  if(dk>today){out.msg="That day is in the future.";out.fix=[["Use today","today"]];return out}
+  let s=msOf(dk,a),en=msOf(dk,b),next=false;
+  if(en<=s){
+    const flip=b+720;
+    if(b<720&&!hasMer.test(r4.replace(/\s+/g,""))&&msOf(dk,flip)>s&&msOf(dk,flip)-s<=16*36e5){
+      out.msg="The stop time is before the start. Did you mean "+fmt12(flip)+"?";out.fix=[["Use "+fmt12(flip),"pm"]];return out}
+    en+=864e5;next=true;
+  }
+  if(en-s>16*36e5){out.msg="That is over 16 hours. Check the times.";return out}
+  if(en>now+5*60000){
+    const pd=addk(dk,-1);let ys=msOf(pd,a),ye=msOf(pd,b);if(ye<=ys)ye+=864e5;
+    out.msg="That ends at "+fdl(key(new Date(en)))+" "+fmt12(b)+", but your device clock says it is "+fdl(today)+" "+fmt12(nowMin())+". It has not happened yet.";
+    if(dk===today&&ye<=now&&ye-ys<=16*36e5)out.fix.push(["Use yesterday","yday"]);
+    if(s<now-60000)out.fix.push(["Stopped at "+fmt12(nowMin())+" instead","now"]);
+    if(!hasMer.test(r3.replace(/\s+/g,""))&&!hasMer.test(r4.replace(/\s+/g,""))&&a<720&&b<720&&b>a&&msOf(dk,b+720)<=now+5*60000)out.fix.push(["Make it "+fmt12(a+720)+" – "+fmt12(b+720),"bothpm"]);
+    return out;
+  }
+  if(en>now)en=now;
+  if(en-s<60000){out.msg="The stop time must be at least a minute after the start.";return out}
+  return{ok:true,fix:[],msg:"",dk,s,en,a,b,next};
+}
+function renderSesPreview(){
+  const r=evalSes(),el=$("spv");
+  const fh=r.fix.map(f=>'<button type="button" class="btn2 pri" data-a="sfix" data-f="'+f[1]+'">'+esc(f[0])+'</button>').join("");
+  if(fh!==sfixLast){sfixLast=fh;$("sfix").innerHTML=fh}   /* only redraw when it changed, or a tap can land on a button that was just replaced */
+  if(r.ok)el.textContent=fdl(r.dk)+" · "+fmt12(r.a)+" – "+fmt12(r.b)+(r.next?" (next day)":"")+" · "+fmtDur((r.en-r.s)/1000);
+  else el.textContent=r.msg;
+  el.className="insight"+(r.ok?"":r.quiet?" quiet":" warn");
+  const td=key(new Date());$("sd0").classList.toggle("on",sesDate()===td);$("sd1").classList.toggle("on",sesDate()===addk(td,-1));
+}
+function sesFix(f){
+  const td=key(new Date());
+  if(f==="today"){sAuto=true;$("s2").value=td}
+  else if(f==="yday"){sAuto=false;$("s2").value=addk(td,-1)}
+  else if(f==="now"){$("s4").value=fmt24(nowMin())}
+  else if(f==="pm"){const b=parseClock($("s4").value);if(b!=null)$("s4").value=fmt24(b+720)}
+  else if(f==="bothpm"){const a=parseClock($("s3").value),b=parseClock($("s4").value);if(a!=null&&b!=null){$("s3").value=fmt24(a+720);$("s4").value=fmt24(b+720)}}
+  renderSesPreview();
+}
+function clearSes(){sAuto=true;editSes=null;$("s3").value="";$("s4").value="";$("s5").value="";$("s2").value=key(new Date());$("serr").textContent="";$("ssave").textContent="Add session";$("scan").hidden=true;$("sdets").textContent="Add a session by hand";renderSesPreview()}
 function saveSes(e){
-  e.preventDefault();
-  const dk=$("s2").value,a=$("s3").value,b=$("s4").value;
-  if(!dk||!a||!b){$("serr").textContent="Add the date, start time and stop time.";return}
-  const mk=t=>{const p=t.split(":"),d=fk(dk);d.setHours(+p[0],+p[1],0,0);return d.getTime()},s=mk(a),en=mk(b);
-  if(en<=s){$("serr").textContent="The stop time must be after the start time.";return}
-  if(en-s>16*36e5){$("serr").textContent="That is over 16 hours. Check the times.";return}
-  if(en>Date.now()){$("serr").textContent="The stop time is in the future.";return}
+  e.preventDefault();newDayCheck();
+  const r=evalSes();
+  if(!r.ok){$("serr").textContent=r.msg;renderSesPreview();return}
   $("serr").textContent="";
+  const dk=r.dk,s=r.s,en=r.en;
   if(editSes){const x=D.ses.find(q=>q.id===editSes);if(x){const od=x.d;x.segs=[[s,en]];x.cat=$("s1").value;x.note=$("s5").value.trim();x.d=dk;x.edited=1;touchDay(od);touchDay(dk)}toast("Session updated")}
-  else{const x={id:newId(),d:dk,segs:[[s,en]],cat:$("s1").value,note:$("s5").value.trim(),src:"manual"};D.ses.push(x);touchDay(dk);toast("Session added by hand")}
+  else{const x={id:newId(),d:dk,segs:[[s,en]],cat:$("s1").value,note:$("s5").value.trim(),src:"manual"};D.ses.push(x);touchDay(dk);toast("Added "+fmtDur((en-s)/1000)+" of work")}
   persist();selSes=dk;clearSes();render();
 }
 
@@ -643,9 +707,9 @@ function renderStats(){
    '<div class="tile"><b>'+(b.logs.length?fmt(bv):"–")+'</b><div class="l">Avg views, last week\'s Shorts</div>'+(b.logs.length?delta(Math.round(bv),Math.round(cv),"","the week before"):'<span class="d">no numbers yet</span>')+'</div>'+
    '<div class="tile"><b>'+(b.logs.length?bp+"%":"–")+'</b><div class="l">Avg viewed, last week\'s Shorts</div>'+(b.logs.length?delta(bp,cp,"","the week before"):'<span class="d">no numbers yet</span>')+'</div>';
   const lc=ls.slice(-14);
-  if(lc.length<2)$("c2").innerHTML='<span class="mu">Add numbers for at least 2 Shorts to see your trend.</span>';
+  if(lc.length<2)$("vwc").innerHTML='<span class="mu">Add numbers for at least 2 Shorts to see your trend.</span>';
   else{const sp=selPt!=null&&selPt<lc.length?selPt:lc.length-1,l=lc[sp];
-    $("c2").innerHTML=lineChart(lc)+'<div class="selb"><span><b>'+esc(l.t)+'</b><br><span class="mu sm">Live '+fd(ld(l))+'</span></span><span class="num"><b>'+fmt(l.v)+'</b> views</span></div><div class="mu sm" style="margin-top:8px">Tap a dot for details. Green dots cleared 1,000 views. Dashed line is the floor. Every number is the 48-hour reading.</div>'}
+    $("vwc").innerHTML=lineChart(lc)+'<div class="selb"><span><b>'+esc(l.t)+'</b><br><span class="mu sm">Live '+fd(ld(l))+'</span></span><span class="num"><b>'+fmt(l.v)+'</b> views</span></div><div class="mu sm" style="margin-top:8px">Tap a dot for details. Green dots cleared 1,000 views. Dashed line is the floor. Every number is the 48-hour reading.</div>'}
   if(ls.length<6)$("then").innerHTML='<span class="mu">Needs 6 Shorts with numbers. Then this compares your first few Shorts with your latest ones, so you can see yourself improve.</span>';
   else{const k=Math.min(5,Math.floor(ls.length/2)),f=ls.slice(0,k),n=ls.slice(-k);
     const row=(lab,x,y,fn,suf)=>{const d=y-x,pct=x?Math.round(d/x*100):null;return'<tr><td>'+lab+'</td><td class="num">'+fn(x)+suf+'</td><td class="num"><b>'+fn(y)+suf+'</b></td><td class="num '+(d>=0?"up":"dn")+'">'+(pct==null?"–":(d>=0?"+":"")+pct+"%")+'</td></tr>'};
@@ -657,7 +721,7 @@ function renderStats(){
   const xs=[];let mx=60;for(let i=13;i>=0;i--){const k=key(ad(NOW,-i)),v=xpOf(k);xs.push([k,v]);if(v>mx)mx=v}
   let s='<svg class="ch" viewBox="0 0 340 120" role="img" aria-label="XP for the last 14 days"><line x1="0" x2="340" y1="94" y2="94" stroke="var(--ln)"/><text x="0" y="9">'+mx+' XP</text>';
   xs.forEach((e,i)=>{const h=e[1]/mx*78,x=i*24.2+2;s+='<rect x="'+x+'" y="'+(94-h)+'" width="19" height="'+Math.max(h,e[1]?2:0)+'" rx="4" fill="'+(e[0]===T?"var(--ac)":"var(--good)")+'"/><text x="'+(x+9.5)+'" y="110" text-anchor="middle">'+"SMTWTFS"[fk(e[0]).getDay()]+'</text>'});
-  $("c1").innerHTML=s+'</svg>';
+  $("xpc").innerHTML=s+'</svg>';
   const b1=ls.length?ls.reduce((m,l)=>l.v>m.v?l:m):null,bp1=ls.filter(l=>l.p).reduce((m,l)=>!m||l.p>m.p?l:m,null),bs=bestStreak(),f1k=ls.find(l=>l.v>=1000);
   let bx=null;Object.keys(D.days).forEach(k=>{if(!bx||xpOf(k)>xpOf(bx))bx=k});
   let bw=null,bws=0;for(let o=0;o<12;o++){const w=weekWork(o);if(w.sum>bws){bws=w.sum;bw=w.ks[0]}}
@@ -839,6 +903,7 @@ function go(t,noHash){
 
 /* ---------- events ---------- */
 document.addEventListener("click",e=>{
+  newDayCheck();
   const t=e.target.closest("[data-a]");if(!t||t.tagName==="INPUT")return;
   const a=t.dataset.a,id=t.dataset.id;
   if(a==="tab")go(t.dataset.t);
@@ -891,7 +956,10 @@ document.addEventListener("click",e=>{
   else if(a==="fdisc")confirmTap(t,"Tap again to discard",()=>{D.tm=null;touchMeta();persist();$("fin").hidden=true;finEnd=null;render();toast("Session discarded")});
   else if(a==="dprev"){selSes=addk(selSes,-1);renderTime()}
   else if(a==="dnext"){if(selSes<T){selSes=addk(selSes,1);renderTime()}}
-  else if(a==="sesedit"){const x=D.ses.find(q=>q.id===id);if(!x)return;editSes=id;$("sdet").open=true;catOptions("s1",x.cat);$("s2").value=x.d;$("s3").value=hhmm(x.segs[0][0]);$("s4").value=hhmm(x.segs[x.segs.length-1][1]);$("s5").value=x.note||"";$("ssub").textContent="Save changes";$("scan").hidden=false;$("sdets").textContent="Edit session";try{$("sdet").scrollIntoView({block:"start",behavior:"smooth"})}catch(e){}}
+  else if(a==="sesedit"){const x=D.ses.find(q=>q.id===id);if(!x)return;editSes=id;sAuto=false;$("sdet").open=true;catOptions("s1",x.cat);$("s2").value=x.d;$("s3").value=hhmm(x.segs[0][0]);$("s4").value=hhmm(x.segs[x.segs.length-1][1]);$("s5").value=x.note||"";$("ssave").textContent="Save changes";$("scan").hidden=false;$("sdets").textContent="Edit session";renderSesPreview();try{$("sdet").scrollIntoView({block:"start",behavior:"smooth"})}catch(e){}}
+  else if(a==="sday"){const td=key(new Date());if(t.dataset.d==="0"){sAuto=true;$("s2").value=td}else{sAuto=false;$("s2").value=addk(td,-1)}renderSesPreview()}
+  else if(a==="snow"){$("s4").value=fmt24(nowMin());renderSesPreview()}
+  else if(a==="sfix")sesFix(t.dataset.f);
   else if(a==="scancel")clearSes();
   else if(a==="sesdel")confirmTap(t,"Tap again to delete",()=>{const i=D.ses.findIndex(q=>q.id===id);if(i<0)return;const d=D.ses[i].d;D.ses.splice(i,1);touchDay(d);persist();if(editSes===id)clearSes();render();toast("Session deleted")});
   /* categories + habits */
@@ -941,6 +1009,7 @@ function wipeAll(){
   render();toast("Fresh start. Day 1 is today.");
 }
 document.addEventListener("change",e=>{
+  newDayCheck();
   const t=e.target;if(!t.dataset)return;
   if(t.dataset.a==="habk"){const r=rec(t.dataset.k);r.h=r.h||{};if(t.checked)r.h[t.dataset.id]=1;else delete r.h[t.dataset.id];touchDay(t.dataset.k);persist();render()}
   else if(t.dataset.a==="task"){setTask(t.dataset.k,+t.dataset.i,t.checked);render()}
@@ -966,6 +1035,7 @@ $("nf").addEventListener("submit",saveNum);
 $("cf").addEventListener("submit",saveC7);
 $("fin").addEventListener("submit",saveFin);
 $("sf").addEventListener("submit",saveSes);
+["s2","s3","s4"].forEach(id=>["input","change"].forEach(ev=>$(id).addEventListener(ev,()=>{if(id==="s2")sAuto=false;renderSesPreview()})));
 $("xt").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("xa").click()}});
 
 /* backup */
@@ -1002,6 +1072,8 @@ window.addEventListener("hashchange",()=>{try{const h=location.hash.slice(1);if(
 function newDayCheck(){if(key(new Date())!==T){NOW=new Date();T=key(NOW);dow=NOW.getDay();selDay=T;selSes=T;clearMake();clearSes();render()}}
 document.addEventListener("visibilitychange",()=>{if(!document.hidden){newDayCheck();syncNow();tickTimer()}});
 window.addEventListener("online",()=>syncNow());
+window.addEventListener("focus",newDayCheck);
+setInterval(newDayCheck,30000);
 setInterval(()=>{if(!document.hidden)syncNow()},60000);
 persist();
 if(SYNC_ON&&AUTH)syncNow();

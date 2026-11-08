@@ -216,6 +216,8 @@ svg.ch text{font:500 10px var(--f-m);fill:var(--mu)}
 .cbar .trk i{display:block;height:100%;border-radius:10px}
 .cbar .v{flex:0 0 auto;font:600 12px var(--f-m);color:var(--mu);min-width:48px;text-align:right}
 .insight{font-size:14px;margin-top:10px;padding:10px 12px;background:var(--bg);border-radius:12px}
+.insight.warn{background:color-mix(in srgb,var(--warm) 14%,var(--bg))}
+.insight.quiet{color:var(--mu)}
 .hrow{display:flex;flex-direction:column;gap:8px;padding:12px 0;border-top:1px solid var(--ln)}
 .hrow:first-child{border-top:0;padding-top:0}
 .dws{display:flex;gap:6px;flex-wrap:wrap}
