@@ -61,16 +61,58 @@ function load(){try{const s=localStorage.getItem(LS);if(s)return norm(JSON.parse
 let D=load();
 let NOW=new Date(),T=key(NOW),dow=NOW.getDay();
 let VIEW="today",progSeg="stats",selDay=T,selPt=null,selSes=T,editShort=null,numId=null,c7Id=null,editClip=null,editSes=null,clipIdx=0,pendingRender=false,finEnd=null;
-const persist=()=>{try{localStorage.setItem(LS,JSON.stringify(D))}catch(e){}};
+let WC=null,WCt=0;   /* derived-work cache, see workCache() */
+const persist=()=>{WC=null;try{localStorage.setItem(LS,JSON.stringify(D))}catch(e){}};
 
 /* ---------- derived: streak, shorts, clips ---------- */
 const dayN=()=>Math.max(1,Math.round((new Date(NOW.getFullYear(),NOW.getMonth(),NOW.getDate())-fk(D.start))/864e5)+1);
 const phase=()=>{const n=dayN();return n<=14?0:n<=30?1:2};
-const cnt=k=>{const d=D.days[k];return d?d.c.reduce((a,b)=>a+(b?1:0),0):0};
+/* ---------- tasks per day ----------
+   Days before TASKS_FROM keep their original 5-task grading exactly. From that day every day has 7 tasks (8 on Sundays).
+   Ticks for the original 5 stay in day.c. Ticks for the extra 3 live in a separate day.c2, so an older copy of the app,
+   which only knows about c, never resets or strips anything. Some tasks also count automatically from real records. */
+const TASKS_FROM="2026-11-09";
+const TASK_TITLES=["Shorts live","Study block","Hook / next clip","Save 1 clip","Numbers","Work target","Making / editing","Channel analytics"];
+const taskIds=k=>k<TASKS_FROM?[0,1,2,3,4]:(fk(k).getDay()===0?[0,1,2,3,4,5,6,7]:[0,1,2,3,4,5,6]);
+const total=k=>taskIds(k).length;
+const tget=(r,i)=>r?(i<5?(r.c&&r.c[i]?1:0):(r.c2&&r.c2[i-5]?1:0)):0;
+function tset(r,i,v){if(i<5)r.c[i]=v?1:0;else{if(!r.c2)r.c2=[0,0,0];r.c2[i-5]=v?1:0}}
+const MKED=c=>c.id==="mk"||c.id==="ed"||/\b(making|editing|edit)\b/i.test(c.n||"");
+function tgtH(k){const h=+D.goal.h||0;if(!isCollege(fk(k).getDay()))return h;return D.goal.cd!=null&&D.goal.cd!==""?(+D.goal.cd||0):Math.min(2,h)}
+/* seconds worked per day (and per category) plus how many Shorts are live per day, in one pass; refreshed every 15 s and whenever data is saved */
+function workCache(){
+  const now=Date.now();if(WC&&now-WCt<15000)return WC;
+  const d={},c={},live={};
+  const add=(segs,cat)=>segs.forEach(g=>{const e=g[1]==null?now:g[1];if(!(e>g[0]))return;let x=new Date(g[0]);x.setHours(0,0,0,0);
+    for(let guard=0;x.getTime()<e&&guard<400;x=ad(x,1),guard++){const lo=Math.max(g[0],x.getTime()),hi=Math.min(e,ad(x,1).getTime());
+      if(hi>lo){const k=key(x),s=(hi-lo)/1000;d[k]=(d[k]||0)+s;const o=c[k]||(c[k]={});o[cat]=(o[cat]||0)+s}}});
+  D.ses.forEach(x=>add(x.segs,x.cat));if(D.tm)add(D.tm.segs,D.tm.cat);
+  D.logs.forEach(l=>{if(isLive(l,now)){const k=ld(l);live[k]=(live[k]||0)+1}});
+  WC={d,c,live};WCt=now;return WC;
+}
+function derivedDone(k,i){
+  if(k<TASKS_FROM||k>T)return false;
+  const w=workCache();
+  if(i===0)return(w.live[k]||0)>=1;
+  if(i===5){const g=tgtH(k);return g>0&&(w.d[k]||0)>=g*3600}
+  if(i===6){const cc=w.c[k]||{};let s=0;D.cats.forEach(c=>{if(MKED(c))s+=cc[c.id]||0});return s>=3600}
+  if(i===7)return !!rvGet(mkOfKey(k)).sv;
+  return false;
+}
+const tdone=(k,i)=>!!(tget(D.days[k],i)||derivedDone(k,i));
+const cnt=k=>taskIds(k).reduce((s,i)=>s+(tdone(k,i)?1:0),0);
+const isFull=k=>cnt(k)>=total(k);
+const liveCount=k=>workCache().live[k]||0;
 const isRest=k=>!!(D.days[k]&&D.days[k].r);
 const kept=k=>isRest(k)||cnt(k)>=KEEP;
-const xpOf=k=>{const d=D.days[k];if(!d)return 0;const n=cnt(k);let x=n*10+(n===5?10:0);d.x.forEach(e=>x+=e.v);return x};
-const allXp=()=>Object.keys(D.days).reduce((s,k)=>s+xpOf(k),0);
+/* every calendar day from the start (or the earliest record) to today, so days that only count automatically are included */
+function dayKeysAll(){const ks=Object.keys(D.days).sort();let a=D.start;if(ks.length&&ks[0]<a)a=ks[0];const out=[];for(let d=fk(a);key(d)<=T;d=ad(d,1))out.push(key(d));return out}
+const xpOf=k=>{
+  const d=D.days[k];
+  if(k<TASKS_FROM){if(!d)return 0;const n=cnt(k);let x=n*10+(n===5?10:0);d.x.forEach(e=>x+=e.v);return x}
+  const n=cnt(k);let x=n*10+(n>=total(k)?10:0)+(liveCount(k)>=2?10:0);if(d)d.x.forEach(e=>x+=e.v);return x;
+};
+const allXp=()=>{const set=new Set(Object.keys(D.days));dayKeysAll().forEach(k=>set.add(k));let s=0;set.forEach(k=>{s+=xpOf(k)});return s};
 const levelOf=xp=>Math.floor(Math.sqrt(xp/50))+1;
 function curStreak(){let d=fk(T),n=0;if(!kept(T))d=ad(d,-1);for(;;){const k=key(d);if(isRest(k)){d=ad(d,-1);continue}if(cnt(k)>=KEEP){n++;d=ad(d,-1)}else break}return n}
 function bestStreak(){const ks=Object.keys(D.days).sort();if(!ks.length)return{n:0,end:null};let c=0,b=0,be=null;for(let d=fk(ks[0]);key(d)<=T;d=ad(d,1)){const k=key(d);if(isRest(k))continue;if(cnt(k)>=KEEP){c++;if(c>b){b=c;be=k}}else if(k!==T)c=0}return{n:b,end:be}}
@@ -80,25 +122,38 @@ const done=()=>D.logs.filter(l=>l.lg);        /* Shorts that have their 48-hour 
 const logsSorted=()=>done().sort((a,b)=>ld(a)<ld(b)?-1:ld(a)>ld(b)?1:0);
 const ret=l=>l.len>0&&l.a>0?Math.round(l.a/l.len*100):null;
 const shortsOn=k=>D.logs.filter(l=>ld(l)===k);
-const dueNums=()=>{const cut=addk(T,-2);return D.logs.filter(l=>!l.lg&&ld(l)<=cut).sort((a,b)=>ld(a)<ld(b)?-1:1)};
-const due7=()=>{const cut=addk(T,-7),old=addk(T,-21);return D.logs.filter(l=>l.lg&&!l.c7&&ld(l)<=cut&&ld(l)>=old).sort((a,b)=>ld(a)<ld(b)?-1:1)};
+const ptOk=l=>!!(l.pt&&parseClock(l.pt)!=null);
+const pubMs=l=>ptOk(l)?msOf(ld(l),parseClock(l.pt)):null;     /* the exact publish moment, when a time was saved */
+const isLive=(l,now)=>{const p=pubMs(l);return p!=null?p<=(now||Date.now()):ld(l)<=T};
+const pubOrder=l=>{const p=pubMs(l);return p!=null?p:msOf(ld(l),0)};
+const ptLabel=l=>ptOk(l)?fmt12(parseClock(l.pt)):"";
+/* when a Short's numbers (48 h) or 7-day check (168 h) are ready: exact if it has a time, otherwise from midnight of that date (as before) */
+const dueMs=(l,hrs)=>{const p=pubMs(l);return p!=null?p+hrs*36e5:msOf(addk(ld(l),Math.round(hrs/24)),0)};
+const dueNums=()=>{const now=Date.now();return D.logs.filter(l=>!l.lg&&dueMs(l,48)<=now).sort((a,b)=>dueMs(a,48)-dueMs(b,48))};
+const due7=()=>{const now=Date.now(),old=addk(T,-21);return D.logs.filter(l=>l.lg&&!l.c7&&dueMs(l,168)<=now&&ld(l)>=old).sort((a,b)=>dueMs(a,168)-dueMs(b,168))};
 const unused=()=>D.clips.filter(c=>!c.used);
 const clipById=id=>D.clips.find(c=>c.id===id);
-function wkSum(off){const m=ad(mondayOf(NOW),-7*off),ks=[0,1,2,3,4,5,6].map(i=>key(ad(m,i)));return{xp:ks.reduce((s,k)=>s+xpOf(k),0),kept:ks.filter(kept).length,full:ks.filter(k=>cnt(k)===5).length,ks,logs:done().filter(l=>ld(l)>=ks[0]&&ld(l)<=ks[6])}}
+function wkSum(off){const m=ad(mondayOf(NOW),-7*off),ks=[0,1,2,3,4,5,6].map(i=>key(ad(m,i)));return{xp:ks.reduce((s,k)=>s+xpOf(k),0),kept:ks.filter(kept).length,full:ks.filter(isFull).length,ks,logs:done().filter(l=>ld(l)>=ks[0]&&ld(l)<=ks[6])}}
 function activeProg(){return D.logs.filter(l=>l.tr===D.test.r).length}
 function ruleText(){const i=D.test.i;return"<b>Rule for this Short: "+esc(tname(i))+".</b> Use one of: "+TESTV[i].map(esc).join(", ")+". Short "+Math.min(activeProg()+1,5)+" of 5 on this test. Change nothing else."}
 function collegeBlock(){let r=[];for(let i=0;i<8;i++){const x=ad(fk(T),i);if(isCollege(x.getDay())){const mon=mondayOf(x);r=[2,3,4].map(o=>key(ad(mon,o))).filter(k=>k>=T);break}}return r}
 function coreFor(){
-  const col=isCollege(dow),tt=shortsOn(T),n=dueNums().length,n7=due7().length;
-  return[
-   tt.length?{t:"Today's Short goes live",s:"“"+tt[0].t+"” is set for today. Tick it once it is out."}
-     :{t:"Post 1 Short",s:col?"Nothing is scheduled for today. Post one if you can, or schedule ahead on your next make day.":"Pick a clip, make it in CapCut (max 20 min), then save it in the Shorts tab."},
-   {t:"Study block · "+(col?20:45)+" min",s:STUDY[dow]},
-   col?{t:"Pick your next clip",s:"Choose which saved clip you will make next. Jot a hook idea in its note."}
-      :{t:"Write today's hook",s:"Write it in CapCut once you know the clip, then save it with the Short. First 2 seconds."},
-   {t:"Save 1 good clip",s:"Paste a YouTube link in Clips when you find one. 7 a week covers every Short."},
-   n||n7?{t:"Fill in numbers · "+(n+n7)+" due",s:"Shorts that are 48 hours old have full stats now. Open the Shorts tab."}
-        :{t:"Numbers: nothing due today",s:"No Short is 48 hours old yet. Tick this to count it."}];
+  const col=isCollege(dow),now=Date.now(),tt=shortsOn(T),n=dueNums().length,n7=due7().length,w=workCache();
+  const live=w.live[T]||0,sched=tt.filter(l=>!isLive(l,now)),secT=w.d[T]||0,cc=w.c[T]||{};let mk=0;D.cats.forEach(c=>{if(MKED(c))mk+=cc[c.id]||0});
+  const tg=tgtH(T),times=sched.map(l=>ptLabel(l)||"no time").join(", ");
+  const all={
+   0:{t:"Shorts live today · "+live+"/2",s:live>=2?"Both are out. Bonus XP earned.":live===1?"One is live, so this counts. A 2nd Short today is bonus XP."+(sched.length?" "+sched.length+" more scheduled ("+times+").":""):sched.length?sched.length+" scheduled for today ("+times+"). It counts once the first one goes live.":col?"Nothing is scheduled for today. Post one if you can, or schedule ahead on your next make day.":"Pick a clip, make it in CapCut (max 20 min), then save it in the Shorts tab. One keeps the day perfect; a 2nd is bonus XP."},
+   1:{t:"Study block · "+(col?20:45)+" min",s:dow===0&&T>=TASKS_FROM?"Pick the weakest skill from this week (hooks, editing or selling) and learn one new thing about it. Use it once.":STUDY[dow]},
+   2:col?{t:"Pick your next clip",s:"Choose which saved clip you will make next. Jot a hook idea in its note."}
+        :{t:"Write today's hook",s:"Write it in CapCut once you know the clip, then save it with the Short. First 2 seconds."},
+   3:{t:"Save 1 good clip",s:"Paste a YouTube link in Clips when you find one. 7 a week covers every Short."},
+   4:n||n7?{t:"Fill in numbers · "+(n+n7)+" due",s:"Shorts that are 48 hours old have full stats now. Open the Shorts tab."}
+          :{t:"Numbers: nothing due today",s:"No Short is 48 hours old yet. Tick this to count it."},
+   5:{t:"Work target · "+fmtDur(secT)+" of "+(tg>0?fmtDur(tg*3600):"–"),s:tg>0?(col?"College-day target. ":"Daily target. ")+"Counted from your timer. Forgot to start it? Add the time in Time, or tick this by hand.":"Set a daily target in More. Until then, tick this by hand."},
+   6:{t:"Making or editing · "+fmtDur(mk)+" of 1h",s:"Timed under Making Shorts or Editing. Tick by hand if you forgot the timer."},
+   7:{t:"Study your channel analytics · 30 min",s:"Sunday only. Compare what worked, note the retention, decide what to change next. Counts when you save your weekly review."}
+  };
+  return taskIds(T).map(i=>Object.assign({i},all[i]));
 }
 
 /* ---------- derived: work time ---------- */
@@ -253,18 +308,18 @@ function confirmTap(t,txt,fn){
 function softRender(){const a=document.activeElement;if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))pendingRender=true;else render()}
 document.addEventListener("focusout",()=>{if(pendingRender){pendingRender=false;setTimeout(render,0)}});
 function taskRow(k,i,title,sub,compact){
-  const dn=D.days[k]&&D.days[k].c[i];
-  return'<label class="task'+(dn?" done":"")+(compact?" c":"")+'"><input type="checkbox" data-a="task" data-k="'+k+'" data-i="'+i+'"'+(dn?" checked":"")+'><span class="tx"><b>'+esc(title)+'</b>'+(sub?'<small>'+esc(sub)+'</small>':"")+'</span></label>';
+  const man=tget(D.days[k],i),der=derivedDone(k,i),dn=man||der;
+  return'<label class="task'+(dn?" done":"")+(compact?" c":"")+'"><input type="checkbox" data-a="task" data-k="'+k+'" data-i="'+i+'"'+(dn?" checked":"")+(der?" disabled":"")+'><span class="tx"><b>'+esc(title)+'</b>'+((sub||der)?'<small>'+esc((sub||"")+(der?(sub?" ":"")+"Counted automatically.":""))+'</small>':"")+'</span></label>';
 }
 function setVal(id,v){const e=$(id);if(document.activeElement!==e)e.value=v==null?"":v}
 function rec(k){const r=D.days[k]||(D.days[k]={c:[0,0,0,0,0],x:[]});return r}
-function tick(k,i){const r=rec(k);if(!r.c[i]){r.c[i]=1;touchDay(k);return true}return false}
+function tick(k,i){const r=rec(k);if(!tget(r,i)){tset(r,i,1);touchDay(k);return true}return false}
 function setTask(k,i,on){
-  const before=cnt(k),kb=kept(T);rec(k).c[i]=on?1:0;touchDay(k);persist();
-  if(k===T&&cnt(k)===5&&before<5)celebrate();
+  const before=cnt(k),kb=kept(T);tset(rec(k),i,on);touchDay(k);persist();
+  if(k===T&&cnt(k)>=total(k)&&before<total(k))celebrate();
   if(k===T)streakCheck(kb);
 }
-function celebrate(){toast("All 5 done. +10 bonus XP.");const r=$("ringw");if(r){r.classList.remove("pop");void r.offsetWidth;r.classList.add("pop")}}
+function celebrate(){toast("All "+total(T)+" done. +10 bonus XP.");const r=$("ringw");if(r){r.classList.remove("pop");void r.offsetWidth;r.classList.add("pop")}}
 function weekHasOtherRest(k){return weekKeys(k).some(x=>x!==k&&isRest(x))}
 function toggleRest(k){
   if(isRest(k)){delete D.days[k].r;toast("Rest day removed")}
@@ -330,8 +385,8 @@ function addClip(lid,nid,oid,wid,force){
   D.clips.push({id:newId(),vid:p.vid,t0:p.t0,label:$(nid).value.trim(),note:oid?$(oid).value.trim():"",added:T,used:null,usedOn:null});
   $(lid).value="";$(nid).value="";if(oid)$(oid).value="";
   const kb=kept(T);touchClips();const first=tick(T,3);persist();render();streakCheck(kb);
-  toast(first&&cnt(T)===5?"Clip saved. All 5 done!":"Clip saved"+(first?" and ticked off":""));
-  if(first&&cnt(T)===5)celebrate();
+  toast(first&&isFull(T)?"Clip saved. All done!":"Clip saved"+(first?" and ticked off":""));
+  if(first&&isFull(T))celebrate();
 }
 function renderClips(){
   const un=unused(),us=D.clips.filter(c=>c.used);
@@ -371,7 +426,7 @@ function saveFin(e){
 }
 function catOptions(id,sel){$(id).innerHTML=D.cats.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.n)+'</option>').join("");if(sel&&catById(sel))$(id).value=sel}
 function timerCard(){
-  const tm=D.tm,now=Date.now(),goal=(D.goal.h||0)*3600,today=secOn(T);
+  const tm=D.tm,now=Date.now(),goal=tgtH(T)*3600,today=secOn(T);
   const bar='<div><div class="tbar"><i style="width:'+Math.min(100,goal?today/goal*100:0)+'%"></i></div><div class="mu sm num" style="margin-top:6px">Today: '+fmtDur(today)+(goal?" of "+fmtDur(goal)+" target":"")+'</div></div>';
   if(!tm){
     return'<div class="card tcard"><div class="eyebrow">Work timer</div><div class="chips">'+D.cats.map(c=>'<button class="chip'+(c.id===D.lastCat?" on":"")+'" data-a="tcat" data-id="'+esc(c.id)+'">'+esc(c.n)+'</button>').join("")+'</div><button class="btn big" data-a="tstart">Start working</button>'+bar+'</div>';
@@ -391,13 +446,14 @@ function tickTimer(){
 let tmSlow=0;
 setInterval(()=>{tickTimer();if(D.tm&&tmRunning(D.tm)&&++tmSlow%30===0&&(VIEW==="today"||VIEW==="time")&&!(document.activeElement&&/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName))){renderTimerCards();if(VIEW==="time")renderWeekWork()}},1000);
 
-function weekChart(w,goalH){
-  const W=340,H=176,L=8,R=8,Tp=18,B=22,mxh=Math.max(1,goalH*1.25,Math.max.apply(null,w.tot)/3600*1.1),n=7,bw=30,gap=(W-L-R-n*bw)/(n-1);
+function weekChart(w,tg){
+  const goalH=Math.max.apply(null,tg.concat([0])),W=340,H=176,L=8,R=8,Tp=18,B=22,mxh=Math.max(1,goalH*1.25,Math.max.apply(null,w.tot)/3600*1.1),n=7,bw=30,gap=(W-L-R-n*bw)/(n-1);
   const Y=h=>Tp+(1-h/mxh)*(H-Tp-B);
   let s='<svg class="ch" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Hours worked each day this week"><line x1="0" x2="'+W+'" y1="'+Y(0)+'" y2="'+Y(0)+'" stroke="var(--ln)"/>';
-  if(goalH>0)s+='<line x1="0" x2="'+W+'" y1="'+Y(goalH)+'" y2="'+Y(goalH)+'" stroke="var(--warm)" stroke-dasharray="4 4"/><text x="'+(W-2)+'" y="'+(Y(goalH)-4)+'" text-anchor="end" style="fill:var(--warm)">target '+goalH+'h</text>';
+  if(goalH>0)s+='<text x="'+(W-2)+'" y="'+(Y(goalH)-6)+'" text-anchor="end" style="fill:var(--warm)">target</text>';
   w.ks.forEach((k,i)=>{
     const x=L+i*(bw+gap);let acc=0;
+    if(tg[i]>0)s+='<line x1="'+(x-3)+'" x2="'+(x+bw+3)+'" y1="'+Y(tg[i])+'" y2="'+Y(tg[i])+'" stroke="var(--warm)" stroke-width="1.5" stroke-dasharray="3 2"/>';
     D.cats.forEach(c=>{const v=w.per[i][c.id]||0;if(v<=0)return;const h0=acc/3600,h1=(acc+v)/3600;s+='<rect x="'+x+'" y="'+Y(h1)+'" width="'+bw+'" height="'+Math.max(1,Y(h0)-Y(h1))+'" fill="'+catColor(c.id)+'"/>';acc+=v});
     const known={};D.cats.forEach(c=>known[c.id]=1);Object.keys(w.per[i]).forEach(id=>{if(!known[id]){const v=w.per[i][id];s+='<rect x="'+x+'" y="'+Y((acc+v)/3600)+'" width="'+bw+'" height="'+Math.max(1,Y(acc/3600)-Y((acc+v)/3600))+'" fill="var(--k7)"/>';acc+=v}});
     if(acc>=180)s+='<text x="'+(x+bw/2)+'" y="'+(Y(acc/3600)-4)+'" text-anchor="middle">'+hrs1(acc)+'</text>';
@@ -406,17 +462,17 @@ function weekChart(w,goalH){
   return s+'</svg>';
 }
 function renderWeekWork(){
-  const a=weekWork(0),b=weekWork(1),gh=+D.goal.h||0,atT=gh>0?a.ks.filter((k,i)=>k<=T&&a.tot[i]>=gh*3600).length:0;
+  const a=weekWork(0),b=weekWork(1),gh=+D.goal.h||0,tgs=a.ks.map(tgtH),atT=a.ks.filter((k,i)=>k<=T&&tgs[i]>0&&a.tot[i]>=tgs[i]*3600).length;
   const d=a.sum-b.sum;
   const past=a.ks.map((k,i)=>({k,s:a.tot[i]})).filter(x=>x.k<=T);
   let ins="Start the timer on your first work session and your week fills in here.";
   if(past.some(x=>x.s>0)){
     const best=past.reduce((m,x)=>x.s>m.s?x:m),done1=past.filter(x=>x.k<T&&x.k>=D.start),low=done1.length?done1.reduce((m,x)=>x.s<m.s?x:m):null,l=[];
     l.push("Best day so far: "+fdl(best.k)+", "+fmtDur(best.s)+".");
-    if(low&&gh>0&&low.s<gh*1800)l.push("Lowest: "+fdl(low.k)+", "+fmtDur(low.s)+", under half your "+gh+"h target. Adding 30 minutes on days like that lifts the whole week.");
+    if(low&&tgtH(low.k)>0&&low.s<tgtH(low.k)*1800)l.push("Lowest: "+fdl(low.k)+", "+fmtDur(low.s)+", under half your "+hr1(tgtH(low.k))+" target. Adding 30 minutes on days like that lifts the whole week.");
     ins=l.join(" ");
   }
-  $("wkw").innerHTML='<div class="tiles" style="margin-bottom:12px"><div class="tile"><b>'+fmtDur(a.sum)+'</b><div class="l">This week</div><span class="d '+(d>=0?"up":"dn")+'">'+(b.sum?(d>=0?"▲ ":"▼ ")+fmtDur(Math.abs(d))+" vs last week":"no time last week")+'</span></div><div class="tile"><b>'+atT+'/'+a.ks.filter(k=>k<=T).length+'</b><div class="l">Days at target</div><span class="d">'+(gh>0?"target "+gh+"h a day":"set a target in More")+'</span></div></div>'+weekChart(a,gh)
+  $("wkw").innerHTML='<div class="tiles" style="margin-bottom:12px"><div class="tile"><b>'+fmtDur(a.sum)+'</b><div class="l">This week</div><span class="d '+(d>=0?"up":"dn")+'">'+(b.sum?(d>=0?"▲ ":"▼ ")+fmtDur(Math.abs(d))+" vs last week":"no time last week")+'</span></div><div class="tile"><b>'+atT+'/'+a.ks.filter(k=>k<=T).length+'</b><div class="l">Days at target</div><span class="d">'+(gh>0?"target "+hr1(gh)+" ("+hr1(tgtH(a.ks[2]))+" Wed–Fri)":"set a target in More")+'</span></div></div>'+weekChart(a,tgs)
    +'<div class="insight">'+esc(ins)+'</div>'+(a.sum>0?'<div class="mu sm" style="margin-top:8px">'+Math.round((a.sum-a.hand)/a.sum*100)+'% tracked with the timer, '+Math.round(a.hand/a.sum*100)+'% added by hand.</div>':"");
   const tot={};a.per.forEach(o=>Object.keys(o).forEach(id=>tot[id]=(tot[id]||0)+o[id]));
   const ids=Object.keys(tot).sort((x,y)=>tot[y]-tot[x]),mx=Math.max(1,...ids.map(id=>tot[id]));
@@ -544,24 +600,24 @@ function renderHead(){
 }
 function dueRows(){
   const dn=dueNums(),d7=due7();if(!dn.length&&!d7.length)return"";
-  const row=(l,txt,a)=>'<div class="xrow"><span><b>'+esc(l.t)+'</b><br><span class="mu sm">Live '+fd(ld(l))+'</span></span><button class="btn2 pri" data-a="'+a+'" data-id="'+esc(l.id)+'">'+txt+'</button></div>';
+  const row=(l,txt,a)=>'<div class="xrow"><span><b>'+esc(l.t)+'</b><br><span class="mu sm">Live '+fd(ld(l))+(ptLabel(l)?" · "+ptLabel(l):"")+'</span></span><button class="btn2 pri" data-a="'+a+'" data-id="'+esc(l.id)+'">'+txt+'</button></div>';
   return dn.map(l=>row(l,"Add numbers","opennum")).join("")+d7.map(l=>row(l,"7-day check","open7")).join("");
 }
 function renderToday(){
-  const n=cnt(T),xp=allXp(),L=levelOf(xp),lo=50*(L-1)*(L-1),hi=50*L*L,C=2*Math.PI*49,seg=C/5-9;
+  const n=cnt(T),tot=total(T),ids=taskIds(T),xp=allXp(),L=levelOf(xp),lo=50*(L-1)*(L-1),hi=50*L*L,C=2*Math.PI*49,seg=C/tot-9;
   let ring='<svg class="ring" viewBox="0 0 120 120" aria-hidden="true">';
-  for(let i=0;i<5;i++)ring+='<circle class="'+(D.days[T]&&D.days[T].c[i]?"on":"tr")+'" cx="60" cy="60" r="49" stroke-dasharray="'+seg.toFixed(1)+' '+(C-seg).toFixed(1)+'" transform="rotate('+(-90+i*72+2.5)+' 60 60)"/>';
-  $("ringw").innerHTML=ring+'</svg><div class="ringc"><b class="num">'+n+'</b><span>of 5</span></div>';
+  ids.forEach((id,j)=>{ring+='<circle class="'+(tdone(T,id)?"on":"tr")+'" cx="60" cy="60" r="49" stroke-dasharray="'+seg.toFixed(1)+' '+(C-seg).toFixed(1)+'" transform="rotate('+(-90+j*(360/tot)+(4.5/C*360)).toFixed(2)+' 60 60)"/>'});
+  $("ringw").innerHTML=ring+'</svg><div class="ringc"><b class="num">'+n+'</b><span>of '+tot+'</span></div>';
   $("dayn").textContent="Day "+dayN()+(dayN()<=365?" of 365":"");
   $("lvn").textContent="Level "+L+" · "+lvName(L);
   $("xpf").style.width=Math.min(100,(xp-lo)/(hi-lo)*100)+"%";
   $("xpt").textContent=fmt(xp)+" XP · "+fmt(hi-xp)+" to level "+(L+1)+" · "+xpOf(T)+" today";
-  $("msg").textContent=isRest(T)?"Rest day. Nothing is required today.":n===5?"All 5 done. Anything extra is pure bonus.":n+" of 5 done. "+(5-n)+" left for a full day.";
+  $("msg").textContent=isRest(T)?"Rest day. Nothing is required today.":n>=tot?"All "+tot+" done. Anything extra is pure bonus.":n+" of "+tot+" done. "+(tot-n)+" left for a full day.";
   $("focus").textContent="Phase focus: "+PH[phase()].g;
   renderStreak();renderTimerCards();
   const dr=dueRows();
   $("due").innerHTML=dr?'<div class="card due"><div class="eyebrow" style="color:var(--ink);margin-bottom:4px">Numbers are ready</div>'+dr+'</div>':"";
-  $("core").innerHTML=coreFor().map((c,i)=>taskRow(T,i,c.t,c.s)).join("");
+  $("core").innerHTML=coreFor().map(c=>taskRow(T,c.i,c.t,c.s)+(c.i===7&&!derivedDone(T,7)?'<div style="padding:0 0 12px 40px"><button class="link" data-a="wkreview">Open weekly review →</button></div>':"")).join("");
   renderHabitsToday();
 
   const un=unused();
@@ -572,20 +628,20 @@ function renderToday(){
      +(un.length<=2?'<p class="sm" style="margin-top:10px;color:var(--warm)">Only '+un.length+' left. Save a few more soon.</p>':"")+'<div class="rule" style="margin-top:12px">'+ruleText()+'</div></div>'}
 
   const blk=collegeBlock(),miss=blk.filter(k=>!shortsOn(k).length),makeDay=!isCollege(dow);
-  $("coll").innerHTML='<div class="eyebrow" style="color:var(--ink)">Wed to Fri Shorts</div><div class="cds">'+blk.map(k=>'<span class="cd'+(shortsOn(k).length?" ok":"")+'">'+fdl(k)+(shortsOn(k).length?" · ready":" · empty")+'</span>').join("")+'</div><p class="sm '+(miss.length?"":"mu")+'">'+(!blk.length?"No college days ahead this week.":miss.length?(makeDay?"Make one extra Short today for "+fdl(miss[0])+" and schedule it in YouTube Studio.":"Nothing is scheduled for "+miss.map(fdl).join(" and ")+". Fix it on your next make day."):"All set. You do not need to make anything on college days.")+'</p>';
+  $("coll").innerHTML='<div class="eyebrow" style="color:var(--ink)">Wed to Fri Shorts</div><div class="cds">'+blk.map(k=>'<span class="cd'+(shortsOn(k).length?" ok":"")+'">'+fdl(k)+(shortsOn(k).length?" · ready"+(shortsOn(k).length>1?" ×"+shortsOn(k).length:""):" · empty")+'</span>').join("")+'</div><p class="sm '+(miss.length?"":"mu")+'">'+(!blk.length?"No college days ahead this week.":miss.length?(makeDay?"Make one extra Short today for "+fdl(miss[0])+" and schedule it in YouTube Studio.":"Nothing is scheduled for "+miss.map(fdl).join(" and ")+". Fix it on your next make day."):"All set. You do not need to make anything on college days.")+'</p>';
 
   const ws=wkSum(0),wd=["M","T","W","T","F","S","S"];
   $("wkc").textContent=ws.kept+" of 7 kept · goal 5";
   $("pips").innerHTML=ws.ks.map((k,i)=>{
     let c="fut",ic="";
-    if(k<=T){const x=cnt(k);if(isRest(k)){c="rest";ic="moon"}else if(x===5){c="full";ic="chk"}else if(x>=KEEP){c="kept";ic="chk"}else c=""}
+    if(k<=T){const x=cnt(k);if(isRest(k)){c="rest";ic="moon"}else if(isFull(k)){c="full";ic="chk"}else if(x>=KEEP){c="kept";ic="chk"}else c=""}
     return'<div class="pip '+c+(k===T?" td":"")+'"><i>'+(ic?'<svg viewBox="0 0 24 24"><use href="#i-'+ic+'"/></svg>':"")+'</i>'+wd[i]+'</div>'}).join("");
   const rb=$("restb");
   if(isRest(T)){rb.textContent="Undo rest day";rb.disabled=false}
   else if(weekHasOtherRest(T)){rb.textContent="Rest day already used this week";rb.disabled=true}
   else{rb.textContent="Take today as my rest day";rb.disabled=false}
   rb.dataset.k=T;
-  $("sunday").innerHTML=dow===0&&!rvDone(curMk())?'<div class="card" style="background:var(--goods);border-color:transparent"><b>Sunday review</b><p class="sm" style="margin:4px 0 10px">Two minutes: what you changed this week, what worked, and what to change next.</p><button class="btn2" data-a="wkreview">Open weekly review</button></div>':"";
+  $("sunday").innerHTML="";   /* Sunday review is now task 8 in the list */
   const d=D.days[T]||{x:[]};
   $("xl").innerHTML=d.x.map((e,i)=>'<div class="xrow"><span>'+esc(e.t)+'</span><span><b class="g">+'+e.v+'</b><button class="x" data-a="xdel" data-i="'+i+'" aria-label="Remove">×</button></span></div>').join("");
   $("sug").innerHTML=SUGS_ALL[phase()].map((a,i)=>'<button class="chip" data-a="sug" data-i="'+i+'">+ '+esc(a[0])+' ('+a[1]+')</button>').join("");
@@ -593,19 +649,22 @@ function renderToday(){
 
 /* ---------- SHORTS ---------- */
 function statusOf(l){
-  if(ld(l)>T)return{p:'<span class="pill">Scheduled · '+fdl(ld(l))+'</span>'};
+  const now=Date.now();
+  if(!isLive(l,now))return{p:'<span class="pill">Scheduled · '+fdl(ld(l))+(ptLabel(l)?" · "+ptLabel(l):"")+'</span>'};
   if(l.lg)return{p:l.v>=1000?'<span class="pill g">Over 1k</span>':""};
-  const nd=addk(ld(l),2);
-  return nd<=T?{p:'<span class="pill w">Numbers due</span>'}:{p:'<span class="pill">Live · numbers on '+fdl(nd)+'</span>'};
+  const dm=dueMs(l,48);
+  if(dm<=now)return{p:'<span class="pill w">Numbers due</span>'};
+  const dd=new Date(dm);
+  return{p:'<span class="pill">Live · numbers '+(ptOk(l)?fdl(key(dd))+" · "+fmt12(dd.getHours()*60+dd.getMinutes()):"on "+fdl(key(dd)))+'</span>'};
 }
 function shortCard(l){
   const r=ret(l),cl=l.cid?clipById(l.cid):null,s=statusOf(l);
   const c7=l.c7&&!l.c7.skip?'<span class="tag">Day 7: '+fmt(l.c7.v)+' views'+(l.v>0?" ("+(l.c7.v>=l.v?"+":"")+Math.round((l.c7.v/l.v-1)*100)+"%)":"")+(l.c7.p?" · "+l.c7.p+"% viewed":"")+'</span>':"";
-  return'<article class="lg"><div class="lgt"><div><b>'+esc(l.t)+'</b><div class="mu sm">'+(ld(l)>T?"Goes live "+fd(ld(l)):"Live "+fd(ld(l)))+(cl?" · from “"+esc(clipName(cl))+"”":"")+'</div></div><div class="lgv"><b>'+(l.lg?fmt(l.v):"–")+'</b><span>'+(l.lg?"views":"waiting")+'</span></div></div>'
+  return'<article class="lg"><div class="lgt"><div><b>'+esc(l.t)+'</b><div class="mu sm">'+(isLive(l)?"Live ":"Goes live ")+fd(ld(l))+(ptLabel(l)?" · "+ptLabel(l):"")+(cl?" · from “"+esc(clipName(cl))+"”":"")+'</div></div><div class="lgv"><b>'+(l.lg?fmt(l.v):"–")+'</b><span>'+(l.lg?"views":"waiting")+'</span></div></div>'
    +(l.h?'<div class="hook">“'+esc(l.h)+'”</div>':"")
    +'<div class="lgm">'+s.p+(l.lg&&l.p?'<span class="tag">'+l.p+'% viewed</span>':"")+(l.lg&&l.a?'<span class="tag">'+l.a+'s avg</span>':"")+(r!=null?'<span class="tag">'+r+'% retention</span>':"")+(l.s?'<span class="tag">+'+l.s+' subs</span>':"")+(l.g&&l.g!=="none"?'<span class="tag">'+esc(l.g)+'</span>':"")+c7+'</div>'
    +(l.n?'<div class="sm mu">'+esc(l.n)+'</div>':"")
-   +'<div class="lga">'+(ld(l)<=T?'<button class="btn2'+(!l.lg&&addk(ld(l),2)<=T?" pri":"")+'" data-a="opennum" data-id="'+esc(l.id)+'">'+(l.lg?"Edit numbers":"Add numbers")+'</button>':"")+'<button class="btn2" data-a="shedit" data-id="'+esc(l.id)+'">Edit details</button><button class="btn2" data-a="shdel" data-id="'+esc(l.id)+'">Delete</button></div></article>';
+   +'<div class="lga">'+(isLive(l)?'<button class="btn2'+(!l.lg&&dueMs(l,48)<=Date.now()?" pri":"")+'" data-a="opennum" data-id="'+esc(l.id)+'">'+(l.lg?"Edit numbers":"Add numbers")+'</button>':"")+'<button class="btn2" data-a="shedit" data-id="'+esc(l.id)+'">Edit details</button><button class="btn2" data-a="shdel" data-id="'+esc(l.id)+'">Delete</button></div></article>';
 }
 function renderMake(){
   const cur=$("m1").value,un=unused(),ed=editShort?D.logs.find(x=>x.id===editShort):null,lk=ed&&ed.cid?clipById(ed.cid):null;
@@ -617,32 +676,60 @@ function renderMake(){
   const vs={};D.logs.forEach(l=>{if(l.g&&l.g!=="none")vs[l.g.toLowerCase()]=l.g});
   const opts=TESTV[D.test.i].slice();Object.keys(vs).forEach(q=>{if(opts.indexOf(q)<0&&opts.length<7)opts.push(vs[q])});
   $("vch").innerHTML=opts.map(q=>'<button type="button" class="chip" data-a="vch" data-v="'+esc(q)+'">'+esc(q)+'</button>').join("");
+  renderMakeTime();
 }
 function renderShorts(){
   const dr=dueRows();
   $("due2").innerHTML=dr?'<div class="card due"><div class="eyebrow" style="color:var(--ink);margin-bottom:4px">Numbers are ready</div>'+dr+'</div>':"";
   renderMake();
-  const up=D.logs.filter(l=>ld(l)>T).sort((a,b)=>ld(a)<ld(b)?-1:1),hist=D.logs.filter(l=>ld(l)<=T).sort((a,b)=>ld(a)<ld(b)?1:ld(a)>ld(b)?-1:0);
+  const up=D.logs.filter(l=>!isLive(l)).sort((a,b)=>pubOrder(a)-pubOrder(b)),hist=D.logs.filter(l=>isLive(l)).sort((a,b)=>pubOrder(b)-pubOrder(a));
   $("sched").innerHTML=up.length?up.map(shortCard).join(""):'<span class="mu">Nothing scheduled ahead. Set a later publish date when you save a Short to see it here.</span>';
   $("lh").innerHTML=hist.length?hist.map(shortCard).join(""):'<span class="mu">No Shorts yet. Save your first one above.</span>';
 }
-function clearMake(){["m2","m3","m4","m1"].forEach(i=>$(i).value="");$("m5").value=T;editShort=null;$("mft").textContent="Make a Short";$("msub").textContent="Save Short";$("mcan").hidden=true;$("merr").textContent=""}
+function clearMake(){["m2","m3","m4","m1","m6"].forEach(i=>$(i).value="");$("m5").value=T;editShort=null;$("mft").textContent="Make a Short";$("msub").textContent="Save Short";$("mcan").hidden=true;$("merr").textContent="";renderMakeTime()}
+/* ---------- publish time on a Short ---------- */
+function mtimeVal(){
+  const raw=$("m6").value.trim().toLowerCase();
+  if(!raw)return{ok:true,min:null};
+  if(raw==="now")return{ok:true,min:nowMin()};
+  const m=parseClock(raw);
+  return m==null?{ok:false,msg:"I could not read that time. Try 4:30pm or 16:30."}:{ok:true,min:m};
+}
+let mtLast="";
+function renderMakeTime(){
+  const recent=[];D.logs.slice().sort((a,b)=>pubOrder(b)-pubOrder(a)).forEach(l=>{if(ptOk(l)&&recent.indexOf(l.pt)<0&&recent.length<2)recent.push(l.pt)});
+  const ch='<button type="button" class="chip" data-a="mtime" data-v="now">Now</button>'+recent.map(t=>'<button type="button" class="chip" data-a="mtime" data-v="'+esc(t)+'">'+fmt12(parseClock(t))+'</button>').join("");
+  if(ch!==mtLast){mtLast=ch;$("mtch").innerHTML=ch}   /* only redraw when it changed, so a tap is never lost */
+  const tv=mtimeVal(),dk=$("m5").value||T,el=$("mpv");let msg="",cls="insight quiet";
+  if(!tv.ok){msg=tv.msg;cls="insight warn"}
+  else{let min=tv.min;if(min==null&&dk===T&&!editShort)min=nowMin();
+    if(min==null){if(dk>T){msg="Add a publish time, like 4:30pm, so the numbers are due at the right moment.";cls="insight warn"}else msg="No time saved. Numbers count from midnight of that day."}
+    else{const ms=msOf(dk,min),due=new Date(ms+48*36e5);msg=(ms<=Date.now()?"Live ":"Goes live ")+fdl(dk)+" · "+fmt12(min)+". Numbers due "+fdl(key(due))+" · "+fmt12(due.getHours()*60+due.getMinutes())+"."}}
+  el.textContent=msg;el.className=cls;
+}
 function saveShort(e){
-  e.preventDefault();const kb=kept(T);
+  e.preventDefault();const kb=kept(T),f0=isFull(T);
   const title=$("m2").value.trim();
   if(!title){$("merr").textContent="Add a title so you can recognise this Short later.";return}
+  const tv=mtimeVal();if(!tv.ok){$("merr").textContent=tv.msg;return}
+  const pdv=$("m5").value||T;let pt=null;
+  if(tv.min!=null)pt=fmt24(tv.min);
+  else if(pdv>T){$("merr").textContent="Add a publish time, like 4:30pm, so the numbers are due at the right moment.";return}
+  else if(!editShort&&pdv===T)pt=fmt24(nowMin());
   $("merr").textContent="";
-  const f={t:title,h:$("m3").value.trim(),g:$("m4").value.trim()||"none",pd:$("m5").value||T,cid:$("m1").value||null};
+  const f={t:title,h:$("m3").value.trim(),g:$("m4").value.trim()||"none",pd:pdv,cid:$("m1").value||null};
   const relink=(old,nw,id)=>{if(old&&old!==nw){const c=clipById(old);if(c&&c.used===id){c.used=null;c.usedOn=null}}if(nw){const c=clipById(nw);if(c){c.used=id;c.usedOn=T}}touchClips()};
-  if(editShort){const l=D.logs.find(x=>x.id===editShort);if(l){relink(l.cid,f.cid,l.id);Object.assign(l,f);touchDay(l.d)}toast("Changes saved")}
+  if(editShort){const l=D.logs.find(x=>x.id===editShort);if(l){relink(l.cid,f.cid,l.id);Object.assign(l,f);if(pt==null)delete l.pt;else l.pt=pt;touchDay(l.d)}toast("Changes saved")}
   else{
-    const l=Object.assign({id:newId(),d:T,tr:D.test.r,ti:D.test.i,lg:0,v:null,p:0,a:0,len:0,s:0,n:""},f);D.logs.push(l);relink(null,f.cid,l.id);touchDay(T);
-    if(f.pd===T)tick(T,0);if(f.h&&!isCollege(dow))tick(T,2);
+    const l=Object.assign({id:newId(),d:T,tr:D.test.r,ti:D.test.i,lg:0,v:null,p:0,a:0,len:0,s:0,n:""},f);if(pt!=null)l.pt=pt;
+    D.logs.push(l);relink(null,f.cid,l.id);touchDay(T);
+    if(f.pd===T&&T<TASKS_FROM)tick(T,0);if(f.h&&!isCollege(dow))tick(T,2);
     if(D.logs.filter(x=>x.tr===D.test.r).length>=5){D.test={i:(D.test.i+1)%5,r:D.test.r+1};touchMeta();toast("Test complete. Next up: "+tname(D.test.i))}
-    else toast(f.pd>T?"Scheduled for "+fdl(f.pd):f.pd===T?"Saved. Today's Short is done.":"Saved");
-    if(cnt(T)===5)celebrate();
+    else toast(!isLive(l)?"Scheduled for "+fdl(f.pd)+(ptLabel(l)?" · "+ptLabel(l):""):f.pd===T?"Saved. It counts as live today.":"Saved");
   }
-  persist();clearMake();render();streakCheck(kb);
+  persist();
+  if(!editShort&&!f0&&isFull(T))celebrate();
+  clearMake();render();streakCheck(kb);
 }
 function npv(){const a=+$("n4").value,l=+$("n5").value;$("npv").textContent=a>0&&l>0?"Retention: people watched "+Math.round(a/l*100)+"% of the video on average.":""}
 function openNum(id){
@@ -657,7 +744,7 @@ function saveNum(e){
   if($("n2").value===""){$("nerr").textContent="Add the view count to save.";return}
   Object.assign(l,{v:+$("n2").value||0,p:+$("n3").value||0,a:+$("n4").value||0,len:+$("n5").value||0,s:+$("n8").value||0,n:$("n7").value.trim()});
   const was=l.lg;l.lg=1;if(!l.lat)l.lat=T;touchDay(l.d);
-  if(!dueNums().length){if(tick(T,4)&&cnt(T)===5)celebrate()}
+  if(!dueNums().length){if(tick(T,4)&&isFull(T))celebrate()}
   persist();$("nf").hidden=true;numId=null;render();streakCheck(kb);
   toast(was?"Numbers updated":l.v>=1000?"Numbers saved. Over the 1,000-view floor.":"Numbers saved");
 }
@@ -735,7 +822,7 @@ function monthList(){
 }
 function dayClass(k){
   if(k<D.start)return"pre";if(k>T)return"fut";
-  if(isRest(k))return"rs";const n=cnt(k);return n===5?"l3":n>=KEEP?"l2":n>0?"l1":"";
+  if(isRest(k))return"rs";const n=cnt(k);return n>=total(k)?"l3":n>=KEEP?"l2":n>0?"l1":"";
 }
 function renderYear(){
   const ms=monthList(),dn=done();
@@ -747,13 +834,13 @@ function renderYear(){
       g+=(k<D.start?'<i class="yc pre"></i>':'<button class="yc '+c+(k===T?" td":"")+(k===selDay?" pk":"")+'" data-a="day" data-k="'+k+'" aria-label="'+fdl(k)+'"></button>')}});
   $("ygrid").innerHTML=g+'</div>';
   const k=selDay,n=cnt(k),logs=shortsOn(k),ws=secOn(k);
-  $("dayd").innerHTML='<div class="dayh"><div><div class="eyebrow">'+(k===T?"Today":"Selected day")+'</div><b>'+fdl(k)+'</b></div><span class="pill'+(n===5?" g":"")+'">'+(isRest(k)?"Rest day":n+" of 5 · "+xpOf(k)+" XP")+'</span></div>'
-   +(k>T?'<p class="mu sm">This day has not happened yet.</p>':CORE_T.map((t,i)=>taskRow(k,i,t,"",true)).join("")+flexHabitRows(k)
+  $("dayd").innerHTML='<div class="dayh"><div><div class="eyebrow">'+(k===T?"Today":"Selected day")+'</div><b>'+fdl(k)+'</b></div><span class="pill'+(n>=total(k)?" g":"")+'">'+(isRest(k)?"Rest day":n+" of "+total(k)+" · "+xpOf(k)+" XP")+'</span></div>'
+   +(k>T?'<p class="mu sm">This day has not happened yet.</p>':taskIds(k).map(i=>taskRow(k,i,k<TASKS_FROM?CORE_T[i]:TASK_TITLES[i],"",true)).join("")+flexHabitRows(k)
    +'<button class="btn2 full" data-a="rest" data-k="'+k+'" style="margin-top:8px"'+(!isRest(k)&&weekHasOtherRest(k)?" disabled":"")+'>'+(isRest(k)?"Undo rest day":!isRest(k)&&weekHasOtherRest(k)?"Rest day already used this week":"Mark as rest day")+'</button>')
    +(ws>0?'<div class="rvh">Work time</div><div class="kv"><span>Tracked</span><b>'+fmtDur(ws)+'</b></div>':"")
    +(logs.length?'<div class="rvh">Shorts on this day</div>'+logs.map(l=>'<div class="kv"><span>'+esc(l.t)+'</span><b>'+(l.lg?fmt(l.v)+" views":"waiting")+'</b></div>').join(""):"");
-  const ks=Object.keys(D.days),tv=dn.reduce((s,l)=>s+l.v,0),bs=bestStreak(),allSec=D.ses.reduce((s,x)=>s+sesSec(x),0);
-  $("ytot").innerHTML=[[ks.filter(x=>cnt(x)>=KEEP).length,"Days kept"],[ks.filter(x=>cnt(x)===5).length,"Full days"],[D.logs.filter(l=>ld(l)<=T).length,"Shorts posted"],[fmt(tv),"Total views"],[bs.n,"Best streak"],[fmt(allXp()),"Total XP"],[Math.round(allSec/3600)+"h","Hours worked"],[D.clips.filter(c=>c.used).length,"Clips used"]].map(a=>'<div class="tile"><b>'+a[0]+'</b><div class="l">'+a[1]+'</div></div>').join("");
+  const ks=dayKeysAll(),tv=dn.reduce((s,l)=>s+l.v,0),bs=bestStreak(),allSec=D.ses.reduce((s,x)=>s+sesSec(x),0);
+  $("ytot").innerHTML=[[ks.filter(x=>cnt(x)>=KEEP).length,"Days kept"],[ks.filter(isFull).length,"Full days"],[D.logs.filter(l=>ld(l)<=T).length,"Shorts posted"],[fmt(tv),"Total views"],[bs.n,"Best streak"],[fmt(allXp()),"Total XP"],[Math.round(allSec/3600)+"h","Hours worked"],[D.clips.filter(c=>c.used).length,"Clips used"]].map(a=>'<div class="tile"><b>'+a[0]+'</b><div class="l">'+a[1]+'</div></div>').join("");
   const rows=ms.filter(m=>key(m)<=T).map(m=>{const pre=m.getFullYear()+"-"+p2(m.getMonth()+1),ls=dn.filter(l=>ld(l).slice(0,7)===pre),dk=ks.filter(x=>x.slice(0,7)===pre&&cnt(x)>=KEEP).length,hs=D.ses.filter(x=>x.d.slice(0,7)===pre).reduce((s,x)=>s+sesSec(x),0);return{pre,m,ls,dk,hs,v:avg(ls,"v"),p:avg(ls,"p")}});
   const mxv=Math.max(1,...rows.map(r=>r.v));
   $("mt").innerHTML='<table><tr><th>Month</th><th>Kept</th><th>Hours</th><th>Shorts</th><th>Avg views</th><th>Viewed</th></tr>'+rows.map(r=>'<tr'+(r.pre===T.slice(0,7)?' class="now"':"")+'><td><b>'+MON[r.m.getMonth()]+'</b></td><td class="num">'+r.dk+'</td><td class="num">'+(r.hs?Math.round(r.hs/360)/10+"h":"–")+'</td><td class="num">'+r.ls.length+'</td><td class="num">'+(r.ls.length?fmt(r.v)+'<span class="mbar" style="width:'+Math.round(r.v/mxv*100)+'%"></span>':"–")+'</td><td class="num">'+(r.ls.length?(Math.round(r.p*10)/10)+"%":"–")+'</td></tr>').join("")+'</table><div class="mu sm" style="margin-top:8px">Shorts here are the ones with 48-hour numbers.</div>';
@@ -765,13 +852,13 @@ function renderYear(){
    Each item: group, name, description, current value p, target t, unit. Achieved when p >= t. */
 function habBest(h){let c=0,b=0;for(let d=fk(h.added);key(d)<=T;d=ad(d,1)){const k=key(d);if(!habSched(h,k))continue;if(habDone(h,k)){c++;if(c>b)b=c}else if(k!==T)c=0}return b}
 function milestoneList(){
-  const dn=done(),tv=dn.reduce((s,l)=>s+l.v,0),bs=bestStreak().n,ks=Object.keys(D.days),allSec=D.ses.reduce((s,x)=>s+sesSec(x),0);
+  const dn=done(),tv=dn.reduce((s,l)=>s+l.v,0),bs=bestStreak().n,ks=dayKeysAll(),allSec=D.ses.reduce((s,x)=>s+sesSec(x),0);
   const weeks={};ks.forEach(x=>{const w=key(mondayOf(fk(x)));(weeks[w]=weeks[w]||[]).push(x)});
-  const bestFull=Object.keys(weeks).reduce((m,w)=>Math.max(m,weekKeys(w).filter(x=>cnt(x)===5).length),0);
+  const bestFull=Object.keys(weeks).reduce((m,w)=>Math.max(m,weekKeys(w).filter(isFull).length),0);
   const rounds={};D.logs.forEach(l=>rounds[l.tr]=(rounds[l.tr]||0)+1);
   const bestRound=Object.keys(rounds).reduce((m,r)=>Math.max(m,rounds[r]),0);
-  const gs=(+D.goal.h||0)*3600,goalDays=(()=>{if(!gs)return 0;const days={};D.ses.forEach(x=>days[x.d]=1);return Object.keys(days).filter(k=>secOn(k)>=gs).length})();
-  const keptDays=ks.filter(x=>cnt(x)>=KEEP).length,fullDays=ks.filter(x=>cnt(x)===5).length;
+  const goalDays=(()=>{const days={};D.ses.forEach(x=>days[x.d]=1);return Object.keys(days).filter(k=>tgtH(k)>0&&secOn(k)>=tgtH(k)*3600).length})();
+  const keptDays=ks.filter(x=>cnt(x)>=KEEP).length,fullDays=ks.filter(isFull).length;
   const reviews=Object.keys(D.rv).filter(x=>D.rv[x].w||D.rv[x].c||D.rv[x].ch).length;
   const maxV=dn.reduce((m,l)=>Math.max(m,l.v),0),over=dn.filter(l=>l.v>=1000).length;
   let run=0,bestRun=0;logsSorted().forEach(l=>{if(l.v>=1000){run++;if(run>bestRun)bestRun=run}else run=0});
@@ -948,7 +1035,7 @@ function wdShortsTable(w){
   if(!w.shorts.length)return'<p class="sm mu" style="padding:14px 12px">No Shorts were published this week.</p>';
   const dn=w.shorts.filter(l=>l.lg);
   const rows=w.shorts.map(l=>{const r=ret(l),sub=DOW[fk(ld(l)).getDay()].slice(0,3)+(l.g&&l.g!=="none"?" · "+l.g:"");
-    return'<tr><td><div class="wtt">'+esc(l.t)+'</div><div class="wts">'+esc(sub)+'</div></td><td>'+(l.lg?fmt(l.v):'<span class="mu">'+(ld(l)>T?"sched":"wait")+'</span>')+'</td><td>'+(l.lg&&+l.p>0?pc1(+l.p):"–")+'</td><td>'+(l.lg&&r!=null?r+"%":"–")+'</td><td>'+(l.lg?(+l.s||0):"–")+'</td></tr>'}).join("");
+    return'<tr><td><div class="wtt">'+esc(l.t)+'</div><div class="wts">'+esc(sub)+'</div></td><td>'+(l.lg?fmt(l.v):'<span class="mu">'+(isLive(l)?"wait":"sched")+'</span>')+'</td><td>'+(l.lg&&+l.p>0?pc1(+l.p):"–")+'</td><td>'+(l.lg&&r!=null?r+"%":"–")+'</td><td>'+(l.lg?(+l.s||0):"–")+'</td></tr>'}).join("");
   const tot='<tr class="tot"><td><div class="wtt">Total</div><div class="wts">'+dn.length+' with data</div></td><td>'+(dn.length?fmt(w.views):"–")+'</td><td>'+pc1(w.vp)+'</td><td>'+pc1(w.rt)+'</td><td>'+(dn.length?w.subs:"–")+'</td></tr>';
   return'<table class="wt cmp"><thead><tr><th>Short</th><th>Views</th><th>View%</th><th>Ret%</th><th>Subs</th></tr></thead><tbody>'+rows+tot+'</tbody></table>';
 }
@@ -1034,7 +1121,7 @@ function renderSync(){
   setSync(syncMode);
 }
 function renderMore(){
-  setVal("goalh",D.goal.h);
+  setVal("goalh",D.goal.h);setVal("goalcd",D.goal.cd!=null&&D.goal.cd!==""?D.goal.cd:Math.min(2,+D.goal.h||0));
   $("catl").innerHTML=D.cats.map(c=>'<div class="srow" style="align-items:center"><span class="tcat" style="flex:1;min-width:0"><i class="dot" style="background:'+catColor(c.id)+'"></i><input data-f="catn" data-id="'+esc(c.id)+'" value="'+esc(c.n)+'" aria-label="Category name"></span><button class="btn2" data-a="catdel" data-id="'+esc(c.id)+'">Delete</button></div>').join("");
   $("habl").innerHTML=D.habits.length?D.habits.map(h=>{const fx=habFlex(h),id=esc(h.id);
     return'<div class="hrow"><input data-f="hn" data-id="'+id+'" value="'+esc(h.n)+'" aria-label="Habit name"><div class="seg"><button data-a="hmode" data-id="'+id+'" data-m="fixed" class="'+(fx?"":"on")+'">Fixed days</button><button data-a="hmode" data-id="'+id+'" data-m="flex" class="'+(fx?"on":"")+'">Flexible</button></div>'
@@ -1105,13 +1192,14 @@ document.addEventListener("click",e=>{
   else if(a==="cdel")confirmTap(t,"Tap again to delete",()=>{D.clips=D.clips.filter(c=>c.id!==id);touchClips();persist();render();toast("Clip deleted")});
   else if(a==="cunuse"){const c=clipById(id);if(c){c.used=null;c.usedOn=null;touchClips();persist();render();toast("Back in your unused clips")}}
   else if(a==="vch"){$("m4").value=t.dataset.v}
+  else if(a==="mtime"){$("m6").value=t.dataset.v==="now"?fmt24(nowMin()):t.dataset.v;renderMakeTime()}
   else if(a==="opennum"){if(VIEW!=="shorts")go("shorts");openNum(id)}
   else if(a==="open7"){if(VIEW!=="shorts")go("shorts");open7(id)}
   else if(a==="numcancel"){$("nf").hidden=true;numId=null}
   else if(a==="c7cancel"){$("cf").hidden=true;c7Id=null}
   else if(a==="c7skip"){const l=D.logs.find(x=>x.id===c7Id);if(l){l.c7={skip:1,d:T};touchDay(l.d);persist()}$("cf").hidden=true;c7Id=null;render()}
   else if(a==="shedit"){const l=D.logs.find(x=>x.id===id);if(!l)return;editShort=id;renderMake();
-    $("m1").value=l.cid||"";$("m2").value=l.t;$("m3").value=l.h||"";$("m4").value=l.g==="none"?"":l.g;$("m5").value=ld(l);
+    $("m1").value=l.cid||"";$("m2").value=l.t;$("m3").value=l.h||"";$("m4").value=l.g==="none"?"":l.g;$("m5").value=ld(l);$("m6").value=l.pt||"";renderMakeTime();
     $("mft").textContent="Edit this Short";$("msub").textContent="Save changes";$("mcan").hidden=false;try{$("mf").scrollIntoView({block:"start",behavior:"smooth"})}catch(e){}}
   else if(a==="mcancel"){clearMake();renderMake()}
   else if(a==="shdel")confirmTap(t,"Tap again to delete",()=>{const i=D.logs.findIndex(x=>x.id===id);if(i<0)return;const l=D.logs[i],m=l.d;
@@ -1207,6 +1295,7 @@ onField("why",()=>{D.why=$("why").value});
 }));
 $("wdnew").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();const b=document.querySelector('[data-a="wtagadd"]');if(b)b.click()}});
 $("goalh").addEventListener("input",()=>debounce("goalh",()=>{D.goal.h=Math.max(0,+$("goalh").value||0);touchMeta();persist()}));
+$("goalcd").addEventListener("input",()=>debounce("goalcd",()=>{D.goal.cd=Math.max(0,+$("goalcd").value||0);touchMeta();persist()}));
 document.addEventListener("input",e=>{
   const t=e.target;if(!t.dataset||!t.dataset.f)return;
   debounce(t.dataset.f+t.dataset.id,()=>{
@@ -1216,6 +1305,7 @@ document.addEventListener("input",e=>{
 });
 ["n4","n5"].forEach(i=>$(i).addEventListener("input",npv));
 $("mf").addEventListener("submit",saveShort);
+["m5","m6"].forEach(id=>["input","change"].forEach(ev=>$(id).addEventListener(ev,renderMakeTime)));
 $("nf").addEventListener("submit",saveNum);
 $("cf").addEventListener("submit",saveC7);
 $("fin").addEventListener("submit",saveFin);
@@ -1259,6 +1349,11 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden){newDayChe
 window.addEventListener("online",()=>syncNow());
 window.addEventListener("focus",newDayCheck);
 setInterval(newDayCheck,30000);
+const uiSig=()=>[cnt(T),xpOf(T),dueNums().length,due7().length,liveCount(T)].join("|");
+let lastSig=uiSig();
+setInterval(()=>{if(document.hidden)return;const sg=uiSig(),a=document.activeElement;
+  if(sg!==lastSig&&(VIEW=="today"||VIEW==="shorts"||VIEW==="time")&&!(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)))render();
+  lastSig=sg},20000);
 setInterval(()=>{if(!document.hidden)syncNow()},60000);
 persist();
 if(SYNC_ON&&AUTH)syncNow();

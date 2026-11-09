@@ -211,7 +211,7 @@
     </form>
 
     <h2 class="sec" id="mft">Make a Short</h2>
-    <p class="lead">Save it as soon as it is made. Set the publish date to the day it goes live. Scheduling it in YouTube for a college day? Pick that date.</p>
+    <p class="lead">Save it as soon as it is made. Set the publish date and time it goes live. Scheduling it in YouTube for a later day? Pick that date and time, and the 48-hour numbers come due at the right moment.</p>
     <form class="card form" id="mf" autocomplete="off">
       <div class="rule" id="rule"></div>
       <label class="fld"><span>Clip it comes from</span><select id="m1"></select></label>
@@ -219,7 +219,12 @@
       <label class="fld"><span>Hook (the opening line)</span><input id="m3" placeholder="e.g. He had 10 seconds to live"></label>
       <label class="fld"><span>Variation used</span><input id="m4" placeholder="Pick one below or type your own"></label>
       <div class="chips" id="vch"></div>
-      <label class="fld"><span>Publish date</span><input id="m5" type="date"></label>
+      <div class="g2">
+        <label class="fld"><span>Publish date</span><input id="m5" type="date"></label>
+        <label class="fld"><span>Publish time</span><input id="m6" type="text" placeholder="4:30pm or now" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+      </div>
+      <div class="chips" id="mtch"></div>
+      <div class="insight quiet" id="mpv" aria-live="polite"></div>
       <div class="err" id="merr" role="alert"></div>
       <button class="btn" type="submit" id="msub">Save Short</button>
       <button class="link" type="button" data-a="mcancel" id="mcan" hidden>Cancel editing</button>
@@ -303,7 +308,7 @@
       <p class="lead" id="ylead"></p>
       <div class="card">
         <div id="ygrid"></div>
-        <div class="legend"><span><i class="rs"></i>Rest</span><span><i></i>1–2 done</span><span><i class="l2"></i>Kept (3–4)</span><span><i class="l3"></i>Full (5)</span></div>
+        <div class="legend"><span><i class="rs"></i>Rest</span><span><i></i>1–2 done</span><span><i class="l2"></i>Kept (3+)</span><span><i class="l3"></i>Full (all tasks)</span></div>
       </div>
       <div class="card" id="dayd"></div>
       <h2 class="sec">So far</h2>
@@ -338,7 +343,10 @@
 
     <h2 class="sec">Work timer settings</h2>
     <div class="card form">
-      <label class="fld"><span>Daily work target (hours)</span><input id="goalh" type="number" inputmode="decimal" min="0" step="0.5"></label>
+      <div class="g2">
+        <label class="fld"><span>Daily target (hours)</span><input id="goalh" type="number" inputmode="decimal" min="0" step="0.5"></label>
+        <label class="fld"><span>College days Wed–Fri</span><input id="goalcd" type="number" inputmode="decimal" min="0" step="0.5"></label>
+      </div>
       <div class="eyebrow" style="margin-top:4px">Categories</div>
       <div id="catl"></div>
       <div class="g2" style="grid-template-columns:minmax(0,3fr) minmax(0,1fr)">

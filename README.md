@@ -2,10 +2,10 @@
 
 A personal tracker for daily habits, a YouTube Shorts pipeline and real work hours. It is an installable web app (PWA): no build step, no framework, just static files.
 
-- **Today**: 5 daily tasks, streak, work timer, habits, clip of the day.
+- **Today**: 7 daily tasks (8 on Sundays), streak, work timer, habits, clip of the day. The work-hours, making/editing and Sunday-analytics tasks tick themselves from the timer and your weekly review.
 - **Time**: start/pause/finish timer, categories, weekly hours, daily target, sessions you can edit.
 - **Clips**: library of YouTube links, marked used automatically.
-- **Shorts**: make and schedule Shorts, 48-hour numbers, 7-day check.
+- **Shorts**: make and schedule Shorts with a publish date and time, 48-hour numbers due exactly 48 hours after each Short goes live, 7-day check.
 - **Progress**: stats, a **Weeks** dashboard (weekly views, retention, subs and hours with your weekly review and tags), and a one-year view.
 - **More**: sync, settings, backup, reset.
 
