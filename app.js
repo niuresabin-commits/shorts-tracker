@@ -682,9 +682,9 @@ function renderShorts(){
   const dr=dueRows();
   $("due2").innerHTML=dr?'<div class="card due"><div class="eyebrow" style="color:var(--ink);margin-bottom:4px">Numbers are ready</div>'+dr+'</div>':"";
   renderMake();
-  const up=D.logs.filter(l=>!isLive(l)).sort((a,b)=>pubOrder(a)-pubOrder(b)),hist=D.logs.filter(l=>isLive(l)).sort((a,b)=>pubOrder(b)-pubOrder(a));
+  const up=D.logs.filter(l=>okKey(ld(l))&&!isLive(l)).sort((a,b)=>pubOrder(a)-pubOrder(b));
   $("sched").innerHTML=up.length?up.map(shortCard).join(""):'<span class="mu">Nothing scheduled ahead. Set a later publish date when you save a Short to see it here.</span>';
-  $("lh").innerHTML=hist.length?hist.map(shortCard).join(""):'<span class="mu">No Shorts yet. Save your first one above.</span>';
+  renderShDash();
 }
 function clearMake(){["m2","m3","m4","m1","m6"].forEach(i=>$(i).value="");$("m5").value=T;editShort=null;$("mft").textContent="Make a Short";$("msub").textContent="Save Short";$("mcan").hidden=true;$("merr").textContent="";renderMakeTime()}
 /* ---------- publish time on a Short ---------- */
@@ -1110,6 +1110,148 @@ function wdSave(){
   toast("Review saved");renderWeeks();
 }
 
+/* ---------- SHORTS dashboard ---------- */
+/* Everything here is calculated from the Shorts you already saved; nothing new is stored.
+   The range, filter and sort you pick only live on this screen. Shorts count by publish date, once they are live. */
+let shRange="28",shFrom="",shTo="",shMetric="views",shFilter="all",shSort={k:"d",dir:-1},shSelId=null,shBucket=null,shLimit=25,shWhen="time";
+const SH_R=[["7","7D"],["28","28D"],["90","90D"],["all","All"],["custom","Custom"]];
+const SH_F=[["all","All"],["k1","Over 1k"],["wait","Waiting"],["am","Morning"],["pm","Afternoon"],["ev","Evening"]];
+const kd=x=>x==null||isNaN(x)?"–":Math.abs(x)>=1000?kf(x):String(Math.round(x*10)/10);
+const SHM=[
+  {k:"views",n:"Views",kind:"n",v:s=>s.nd?s.views:null,s:kf,ax:kd},
+  {k:"avg",n:"Avg views",kind:"n",v:s=>s.nd?s.views/s.nd:null,s:kf,ax:kd},
+  {k:"vp",n:"Viewed %",kind:"p",v:s=>s.vp,s:pc1,ax:x=>Math.round(x)+"%"},
+  {k:"rt",n:"Retention",kind:"p",v:s=>s.rt,s:pc1,ax:x=>Math.round(x)+"%"},
+  {k:"subs",n:"Subs",kind:"a",v:s=>s.nd?s.subs:null,s:kd,ax:kd},
+  {k:"n",n:"Shorts",kind:"a",v:s=>s.n||null,s:kd,ax:kd}
+];
+const shMet=k=>SHM.find(m=>m.k===k)||SHM[0];
+const dayDiff=(a,b)=>Math.round((fk(b)-fk(a))/864e5);
+const shLive=()=>D.logs.filter(l=>okKey(ld(l))&&isLive(l));
+const inSpan=(list,a,b)=>list.filter(l=>ld(l)>=a&&ld(l)<=b);
+const fdr=k=>k.slice(0,4)===T.slice(0,4)?fd(k):fd(k)+" "+k.slice(0,4);
+const slotOf=l=>{const m=ptOk(l)?parseClock(l.pt):null;return m==null?"none":m<720?"am":m<1080?"pm":"ev"};
+function shSpan(live){
+  let a,b=T;
+  if(shRange==="all")a=live.reduce((m,l)=>ld(l)<m?ld(l):m,T);
+  else if(shRange==="custom"){
+    a=okKey(shFrom)?shFrom:addk(T,-27);b=okKey(shTo)?shTo:T;
+    if(a>b){const x=a;a=b;b=x}
+    if(b>T)b=T;if(a>b)a=b;
+    if(a<"2020-01-01")a="2020-01-01";if(a>b)a=b;
+    if(dayDiff(a,b)>1829)a=addk(b,-1829);
+  }else a=addk(T,-(+shRange-1));
+  const days=dayDiff(a,b)+1;
+  return{a,b,days,prev:shRange==="all"?null:{a:addk(a,-days),b:addk(a,-1)}};
+}
+function shStat(list){
+  const dn=list.filter(l=>l.lg);
+  return{n:list.length,nd:dn.length,views:dn.reduce((t,l)=>t+(+l.v||0),0),vp:meanOf(dn.filter(l=>+l.p>0).map(l=>+l.p)),rt:meanOf(dn.map(ret).filter(x=>x!=null)),subs:dn.reduce((t,l)=>t+(+l.s||0),0),k1:dn.filter(l=>+l.v>=1000).length,list:list};
+}
+/* day / week / month buckets for the chart, so a long range never turns into a hundred thin bars */
+function shBuckets(sp,inR){
+  const mode=sp.days<=31?"d":sp.days<=217?"w":"m",bs=[];
+  if(mode==="d"){for(let i=0;i<sp.days;i++){const k=addk(sp.a,i);bs.push({a:k,b:k})}}
+  else if(mode==="w"){let s=sp.a;while(s<=sp.b){const e=addk(key(mondayOf(fk(s))),6),b=e>sp.b?sp.b:e;bs.push({a:s,b:b});s=addk(b,1)}}
+  else{let s=sp.a;while(s<=sp.b){const d=fk(s),e=key(new Date(d.getFullYear(),d.getMonth()+1,0)),b=e>sp.b?sp.b:e;bs.push({a:s,b:b});s=addk(b,1)}}
+  bs.forEach(x=>{x.st=shStat(inSpan(inR,x.a,x.b))});
+  return{mode:mode,bs:bs};
+}
+function bkLab(x,mode){
+  if(mode==="d")return fdl(x.a);
+  if(mode==="w")return fd(x.a)+" – "+fd(x.b);
+  const d=fk(x.a);return MON[d.getMonth()]+" "+d.getFullYear();
+}
+function shChart(bs,mode,met,selA,avgv){
+  const W=340,H=196,L=34,R=8,Tp=20,B=40,n=bs.length,pw=(W-L-R)/n,bw=Math.min(pw*.62,26);
+  const vals=bs.map(x=>met.v(x.st)),nums=vals.filter(v=>v!=null),mx=wdNice(nums.length?Math.max.apply(null,nums):0,met.kind==="p");
+  const Y=v=>Tp+(1-v/mx)*(H-Tp-B),X=i=>L+i*pw,step=Math.max(1,Math.ceil(n/9)),big=n<=8;
+  let s='<svg class="ch" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc(met.n)+' by '+(mode==="d"?"day":mode==="w"?"week":"month")+', '+n+' bars">';
+  [0,.5,1].forEach(f=>{const v=mx*f;s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="var(--ln)"/>'+(nums.length?'<text x="'+(L-5)+'" y="'+(Y(v)+3.5)+'" text-anchor="end">'+met.ax(v)+'</text>':"")});
+  if(!nums.length)s+='<text x="'+((L+W-R)/2)+'" y="'+((Tp+H-B)/2)+'" text-anchor="middle">No numbers in this range yet</text>';
+  let mxi=-1;vals.forEach((v,i)=>{if(v!=null&&(mxi<0||v>vals[mxi]))mxi=i});
+  let prevL=null;
+  bs.forEach((x,i)=>{
+    const sel=x.a===selA,v=vals[i],cx=X(i)+pw/2;
+    if(sel)s+='<rect x="'+X(i)+'" y="'+Tp+'" width="'+pw+'" height="'+(Y(0)-Tp)+'" style="fill:var(--acs);opacity:.55"/>';
+    if(v!=null){const y=Y(v),h=Math.max(1.5,Y(0)-y);
+      s+='<rect x="'+(cx-bw/2)+'" y="'+y+'" width="'+bw+'" height="'+h+'" rx="2" style="fill:var(--ac);opacity:'+(sel?1:.6)+'"/>';
+      if(big||sel||i===mxi||i===n-1)s+='<text x="'+cx+'" y="'+(y-4)+'" text-anchor="middle" style="'+(sel?"fill:var(--ink);font-weight:600":"")+'">'+met.s(v)+'</text>'}
+    else s+='<circle cx="'+cx+'" cy="'+Y(0)+'" r="1.6" style="fill:var(--ln)"/>';
+    if((n-1-i)%step===0){const d=fk(x.a),st=sel?"fill:var(--ink);font-weight:600":"";
+      if(mode==="m"){s+='<text x="'+cx+'" y="'+(H-B+14)+'" text-anchor="middle" style="'+st+'">'+MON[d.getMonth()]+'</text>';if(prevL!==d.getFullYear()){s+='<text x="'+cx+'" y="'+(H-B+25)+'" text-anchor="middle" style="font-size:8px;letter-spacing:.08em">'+d.getFullYear()+'</text>';prevL=d.getFullYear()}}
+      else if(mode==="d"&&n<=8){s+='<text x="'+cx+'" y="'+(H-B+14)+'" text-anchor="middle" style="'+st+'">'+DOW[d.getDay()].slice(0,3)+'</text><text x="'+cx+'" y="'+(H-B+25)+'" text-anchor="middle" style="font-size:8px;letter-spacing:.06em">'+d.getDate()+" "+MON[d.getMonth()].toUpperCase()+'</text>'}
+      else{s+='<text x="'+cx+'" y="'+(H-B+14)+'" text-anchor="middle" style="'+st+'">'+d.getDate()+'</text>';if(prevL!==d.getMonth()){s+='<text x="'+cx+'" y="'+(H-B+25)+'" text-anchor="middle" style="font-size:8px;letter-spacing:.08em">'+MON[d.getMonth()].toUpperCase()+'</text>';prevL=d.getMonth()}}}
+    s+='<rect x="'+X(i)+'" y="0" width="'+pw+'" height="'+H+'" fill="transparent" data-a="shbar" data-k="'+x.a+'" style="cursor:pointer"><title>'+esc(bkLab(x,mode))+'</title></rect>';
+  });
+  if(avgv!=null)s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(avgv)+'" y2="'+Y(avgv)+'" stroke-dasharray="4 3" style="stroke:var(--warm)"/>';
+  return s+'</svg>';
+}
+function shRow(l){
+  const r=ret(l),open=shSelId===l.id,d=fk(ld(l)),sub=DOW[d.getDay()].slice(0,3)+" "+d.getDate()+(ptLabel(l)?" · "+ptLabel(l):"");
+  return'<tr data-a="shpick" data-id="'+esc(l.id)+'"'+(open?' class="sel"':"")+'><td><div class="wtt">'+esc(l.t)+'</div><div class="wts">'+esc(sub)+'</div></td>'
+   +(l.lg?'<td'+(+l.v>=1000?' class="k1"':"")+'>'+fmt(l.v)+'</td>':'<td><span class="mu">wait</span></td>')
+   +'<td>'+(l.lg&&+l.p>0?pc1(+l.p):"–")+'</td><td>'+(l.lg&&r!=null?r+"%":"–")+'</td><td>'+(l.lg?(+l.s||0):"–")+'</td></tr>'
+   +(open?'<tr class="det"><td colspan="5"><div class="detin">'+shortCard(l)+'</div></td></tr>':"");
+}
+function shSorted(list){
+  const k=shSort.k,dir=shSort.dir;
+  const val=l=>k==="d"?pubOrder(l):!l.lg?null:k==="v"?(+l.v||0):k==="p"?(+l.p>0?+l.p:null):k==="r"?ret(l):k==="s"?(+l.s||0):null;
+  return list.slice().sort((x,y)=>{const a=val(x),b=val(y);if(a==null&&b==null)return pubOrder(y)-pubOrder(x);if(a==null)return 1;if(b==null)return-1;return(a-b)*dir||(pubOrder(y)-pubOrder(x))});
+}
+const shFilterFn=f=>f==="k1"?(l=>l.lg&&+l.v>=1000):f==="wait"?(l=>!l.lg):(f==="am"||f==="pm"||f==="ev")?(l=>slotOf(l)===f):(()=>true);
+function shWhenTable(inR){
+  const groups=shWhen==="dow"?[1,2,3,4,5,6,0].map(i=>({lab:DOW[i],sub:"",f:l=>fk(ld(l)).getDay()===i}))
+    :[{lab:"Morning",sub:"before noon",f:l=>slotOf(l)==="am"},{lab:"Afternoon",sub:"noon – 6 PM",f:l=>slotOf(l)==="pm"},{lab:"Evening",sub:"after 6 PM",f:l=>slotOf(l)==="ev"},{lab:"No time saved",sub:"older Shorts",f:l=>slotOf(l)==="none"}];
+  const st=groups.map(g=>shStat(inR.filter(g.f)));
+  const ok=st.map((s,i)=>(shWhen==="dow"||i<3)&&s.nd>=3),cand=st.map((s,i)=>ok[i]?i:-1).filter(i=>i>=0);
+  let best=-1;if(cand.length>=2)cand.forEach(i=>{if(best<0||st[i].views/st[i].nd>st[best].views/st[best].nd)best=i});
+  const rows=groups.map((g,i)=>{const s=st[i];if(!s.n&&shWhen==="time"&&i===3)return"";
+    return'<tr'+(i===best?' class="sel"':"")+'><td><div class="wtt">'+esc(g.lab)+'</div><div class="wts">'+(i===best?'<span class="pill g">best so far</span>':esc(g.sub||(s.nd>0&&s.nd<3?"few Shorts":"")))+'</div></td><td>'+(s.n?s.nd:"–")+'</td><td>'+(s.nd?kf(s.views/s.nd):"–")+'</td><td>'+pc1(s.vp)+'</td><td>'+pc1(s.rt)+'</td><td>'+(s.nd?Math.round(s.k1/s.nd*100)+"%":"–")+'</td></tr>'}).join("");
+  return'<table class="wt cmp"><thead><tr><th>'+(shWhen==="dow"?"Day":"Posted")+'</th><th>Sh</th><th>Avg</th><th>View%</th><th>Ret%</th><th>1k+</th></tr></thead><tbody>'+rows+'</tbody></table>';
+}
+function renderShDash(){
+  const live=shLive(),sp=shSpan(live),inR=inSpan(live,sp.a,sp.b),cur=shStat(inR),prv=sp.prev?shStat(inSpan(live,sp.prev.a,sp.prev.b)):null;
+  if(shSelId&&!D.logs.some(x=>x.id===shSelId))shSelId=null;
+  /* range */
+  $("shr").innerHTML=SH_R.map(r=>'<button data-a="shr" data-r="'+r[0]+'"'+(r[0]===shRange?' class="on"':"")+'>'+r[1]+'</button>').join("");
+  $("shcust").hidden=shRange!=="custom";
+  $("shf").max=T;$("sht").max=T;
+  $("shrl").textContent=fdr(sp.a)+" – "+fdr(sp.b)+" · "+sp.days+" day"+(sp.days===1?"":"s");
+  /* key numbers, each compared with the period just before */
+  const M=shMet,dl=m=>prv?wdDelta(m,m.v(cur),m.v(prv)):'<span class="d">all time</span>',cnt0={kind:"a",v:s=>s.n},k1m={kind:"a",v:s=>s.nd?s.k1:null};
+  const tiles=[["Shorts",String(cur.n),dl(cnt0)],["Views",cur.nd?kf(cur.views):"–",dl(M("views"))],["Avg views",cur.nd?kf(cur.views/cur.nd):"–",dl(M("avg"))],["Viewed %",pc1(cur.vp),dl(M("vp"))],
+    ["Retention",pc1(cur.rt),dl(M("rt"))],["Subs",cur.nd?String(cur.subs):"–",dl(M("subs"))],["Over 1k",cur.nd?cur.k1+"/"+cur.nd:"–",dl(k1m)],["Per day",(cur.n/sp.days).toFixed(1),'<span class="d">'+sp.days+' day'+(sp.days===1?"":"s")+'</span>']];
+  $("shkpi").innerHTML=tiles.map(t=>'<div class="kpi"><div class="l">'+t[0]+'</div><b>'+t[1]+'</b>'+t[2]+'</div>').join("");
+  const top=inR.filter(l=>l.lg).sort((x,y)=>(+y.v||0)-(+x.v||0))[0],wait=cur.n-cur.nd;
+  $("shnote").innerHTML=(top?'<span>TOP <b>'+esc(String(top.t||"Untitled").length>34?String(top.t).slice(0,34)+"…":String(top.t||"Untitled"))+'</b> · '+fmt(top.v)+' views · '+fdl(ld(top))+(ptLabel(top)?" · "+ptLabel(top):"")+'</span>':'<span>No Shorts with numbers in this range yet.</span>')
+    +'<span>'+(prv?"Arrows compare with "+fdr(sp.prev.a)+" – "+fdr(sp.prev.b)+". ":"")+(wait?wait+" Short"+(wait===1?" is":"s are")+" still waiting for 48-hour numbers and "+(wait===1?"is":"are")+" left out of the averages.":"Averages use Shorts with their 48-hour numbers.")+'</span>';
+  /* chart */
+  const met=M(shMetric),bk=shBuckets(sp,inR),bs=bk.bs;
+  if(shBucket&&!bs.some(x=>x.a===shBucket))shBucket=null;
+  const nums=bs.map(x=>met.v(x.st)).filter(v=>v!=null),avgv=nums.length>=2?meanOf(nums):null,unit=bk.mode==="d"?"day":bk.mode==="w"?"week":"month";
+  $("shct").textContent=met.n+" · by "+unit;$("shcm").textContent=bs.length+" "+unit+(bs.length===1?"":"s");
+  $("shmet").innerHTML=SHM.map(m=>'<button data-a="shmet" data-m="'+m.k+'"'+(m.k===met.k?' class="on"':"")+'>'+m.n+'</button>').join("");
+  $("shchart").innerHTML=shChart(bs,bk.mode,met,shBucket,avgv);
+  let bi=-1;bs.forEach((x,i)=>{const v=met.v(x.st);if(v!=null&&(bi<0||v>met.v(bs[bi].st)))bi=i});
+  $("shcf").innerHTML=(bi>=0?'<span>BEST <b>'+bkLab(bs[bi],bk.mode)+'</b> · '+met.s(met.v(bs[bi].st))+'</span>':'<span>No numbers in this range yet.</span>')
+    +(avgv!=null?'<span class="wdlg"><span><i class="g2"></i>avg '+met.s(avgv)+' per '+unit+'</span></span>':"")+'<span>Tap a bar to list only that '+unit+"'s Shorts below.</span>";
+  /* table */
+  const sb=shBucket?bs.find(x=>x.a===shBucket):null,base=sb?inSpan(inR,sb.a,sb.b):inR;
+  const rows=shSorted(base.filter(shFilterFn(shFilter))),shown=rows.slice(0,shLimit);
+  $("shtn").textContent=rows.length+(rows.length===base.length?"":" of "+base.length)+" Short"+(base.length===1?"":"s");
+  $("shflt").innerHTML=SH_F.map(f=>'<button data-a="shf" data-f="'+f[0]+'"'+(f[0]===shFilter?' class="on"':"")+'>'+f[1]+'</button>').join("");
+  $("shbk").innerHTML=sb?'<div class="callout"><span class="cl">SHOWING</span><span class="ctx">'+esc(bkLab(sb,bk.mode))+'</span><button class="link" data-a="shbclr">Show all</button></div>':"";
+  const th=(s,lab)=>'<th data-a="shsort" data-s="'+s+'"'+(shSort.k===s?' class="on '+(shSort.dir>0?"asc":"dsc")+'"':"")+'>'+lab+'</th>';
+  $("shtab").innerHTML=rows.length?'<table class="wt cmp"><thead><tr>'+th("d","Short")+th("v","Views")+th("p","View%")+th("r","Ret%")+th("s","Subs")+'</tr></thead><tbody>'+shown.map(shRow).join("")+'</tbody></table>'
+    :'<p class="sm mu shnone">'+(base.length?"No Shorts match this filter.":!live.length?"No Shorts are live yet. Save one above.":"No Shorts were published in this range.")+'</p>';
+  $("shmore").innerHTML=rows.length>shown.length?'<div class="shmore"><button class="btn2" data-a="shmore">Show '+Math.min(25,rows.length-shown.length)+' more · '+(rows.length-shown.length)+' left</button></div>':"";
+  /* posting time / weekday */
+  $("shpa").innerHTML=[["time","Time"],["dow","Day"]].map(r=>'<button data-a="shpa" data-w="'+r[0]+'"'+(r[0]===shWhen?' class="on"':"")+'>'+r[1]+'</button>').join("");
+  $("shwhen").innerHTML=shWhenTable(inR);
+  $("shwn").innerHTML='<span>Sh = Shorts with 48-hour numbers. Morning is before noon, evening is after 6 PM. 1k+ is the share that passed 1,000 views.</span><span>These are clues, not proof. Trust a gap only when each row has 3 or more Shorts.</span>';
+}
+
 /* ---------- MORE ---------- */
 function renderSync(){
   const c=$("synccard");if(!c)return;
@@ -1167,6 +1309,15 @@ document.addEventListener("click",e=>{
   else if(a==="gosync")go("more");
   else if(a==="pseg"){progSeg=t.dataset.s;renderProg();try{history.replaceState(null,"","#"+(progSeg==="stats"?"prog":progSeg))}catch(e){}window.scrollTo(0,0)}
   else if(a==="wkpick"){wdBlur();selWeek=t.dataset.k;renderWeeks()}
+  else if(a==="shr"){const r=t.dataset.r;if(r==="custom"&&shRange!=="custom"){const sp=shSpan(shLive());shFrom=sp.a;shTo=sp.b;$("shf").value=sp.a;$("sht").value=sp.b}shRange=r;shBucket=null;shLimit=25;renderShDash()}
+  else if(a==="shmet"){shMetric=t.dataset.m;renderShDash()}
+  else if(a==="shf"){shFilter=t.dataset.f;shLimit=25;renderShDash()}
+  else if(a==="shsort"){const k=t.dataset.s;shSort=shSort.k===k?{k:k,dir:-shSort.dir}:{k:k,dir:-1};shLimit=25;renderShDash()}
+  else if(a==="shpick"){shSelId=shSelId===id?null:id;renderShDash()}
+  else if(a==="shbar"){shBucket=shBucket===t.dataset.k?null:t.dataset.k;shLimit=25;renderShDash()}
+  else if(a==="shbclr"){shBucket=null;renderShDash()}
+  else if(a==="shmore"){shLimit+=25;renderShDash()}
+  else if(a==="shpa"){shWhen=t.dataset.w;renderShDash()}
   else if(a==="wkprev"||a==="wknext"){wdBlur();const ks=wdKeyList(),j=ks.indexOf(selWeek)+(a==="wknext"?1:-1);if(j>=0&&j<ks.length){selWeek=ks[j];renderWeeks()}}
   else if(a==="wkcur"){wdBlur();selWeek=curMk();renderWeeks()}
   else if(a==="wkmetric"){wkMetric=t.dataset.m;renderWeeks()}
@@ -1306,6 +1457,7 @@ document.addEventListener("input",e=>{
 ["n4","n5"].forEach(i=>$(i).addEventListener("input",npv));
 $("mf").addEventListener("submit",saveShort);
 ["m5","m6"].forEach(id=>["input","change"].forEach(ev=>$(id).addEventListener(ev,renderMakeTime)));
+["shf","sht"].forEach(id=>["input","change"].forEach(ev=>$(id).addEventListener(ev,()=>{shFrom=$("shf").value;shTo=$("sht").value;shBucket=null;shLimit=25;renderShDash()})));
 $("nf").addEventListener("submit",saveNum);
 $("cf").addEventListener("submit",saveC7);
 $("fin").addEventListener("submit",saveFin);

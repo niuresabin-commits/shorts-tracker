@@ -232,8 +232,37 @@
 
     <h2 class="sec" id="sch">Coming up</h2>
     <div class="card" id="sched"></div>
-    <h2 class="sec">History</h2>
-    <div class="card" id="lh"></div>
+    <h2 class="sec">Your Shorts</h2>
+    <div id="shdash" style="display:flex;flex-direction:column;gap:12px">
+      <div class="panel">
+        <header><span>Overview</span><span id="shrl"></span></header>
+        <div class="wdtool" id="shr"></div>
+        <div class="g2 shcust" id="shcust" hidden>
+          <label class="fld"><span>From</span><input id="shf" type="date"></label>
+          <label class="fld"><span>To</span><input id="sht" type="date"></label>
+        </div>
+        <div class="kpis" id="shkpi"></div>
+        <div class="wdfoot" id="shnote"></div>
+      </div>
+      <div class="panel">
+        <header><span id="shct"></span><span id="shcm"></span></header>
+        <div class="wdtool" id="shmet"></div>
+        <div class="wdsvg" id="shchart"></div>
+        <div class="wdfoot" id="shcf"></div>
+      </div>
+      <div class="panel">
+        <header><span id="shtt">Shorts</span><span id="shtn"></span></header>
+        <div class="wdtool" id="shflt"></div>
+        <div id="shbk"></div>
+        <div class="tw" id="shtab"></div>
+        <div id="shmore"></div>
+      </div>
+      <div class="panel">
+        <header><span>When it works best</span><span class="rng" id="shpa"></span></header>
+        <div class="tw" id="shwhen"></div>
+        <div class="wdfoot" id="shwn"></div>
+      </div>
+    </div>
   </section>
 
   <!-- PROGRESS -->
