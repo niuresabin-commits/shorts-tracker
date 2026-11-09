@@ -450,10 +450,10 @@ function weekChart(w,tg){
   const goalH=Math.max.apply(null,tg.concat([0])),W=340,H=176,L=8,R=8,Tp=18,B=22,mxh=Math.max(1,goalH*1.25,Math.max.apply(null,w.tot)/3600*1.1),n=7,bw=30,gap=(W-L-R-n*bw)/(n-1);
   const Y=h=>Tp+(1-h/mxh)*(H-Tp-B);
   let s='<svg class="ch" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Hours worked each day this week"><line x1="0" x2="'+W+'" y1="'+Y(0)+'" y2="'+Y(0)+'" stroke="var(--ln)"/>';
-  if(goalH>0)s+='<text x="'+(W-2)+'" y="'+(Y(goalH)-6)+'" text-anchor="end" style="fill:var(--warm)">target</text>';
+  if(goalH>0)s+='<text x="'+(W-2)+'" y="9" text-anchor="end">shaded bar = daily target</text>';
   w.ks.forEach((k,i)=>{
     const x=L+i*(bw+gap);let acc=0;
-    if(tg[i]>0)s+='<line x1="'+(x-3)+'" x2="'+(x+bw+3)+'" y1="'+Y(tg[i])+'" y2="'+Y(tg[i])+'" stroke="var(--warm)" stroke-width="1.5" stroke-dasharray="3 2"/>';
+    if(tg[i]>0)s+='<rect x="'+x+'" y="'+Y(tg[i])+'" width="'+bw+'" height="'+(Y(0)-Y(tg[i]))+'" rx="5" style="fill:color-mix(in srgb,var(--ink) 9%,transparent)"/>';
     D.cats.forEach(c=>{const v=w.per[i][c.id]||0;if(v<=0)return;const h0=acc/3600,h1=(acc+v)/3600;s+='<rect x="'+x+'" y="'+Y(h1)+'" width="'+bw+'" height="'+Math.max(1,Y(h0)-Y(h1))+'" fill="'+catColor(c.id)+'"/>';acc+=v});
     const known={};D.cats.forEach(c=>known[c.id]=1);Object.keys(w.per[i]).forEach(id=>{if(!known[id]){const v=w.per[i][id];s+='<rect x="'+x+'" y="'+Y((acc+v)/3600)+'" width="'+bw+'" height="'+Math.max(1,Y(acc/3600)-Y((acc+v)/3600))+'" fill="var(--k7)"/>';acc+=v}});
     if(acc>=180)s+='<text x="'+(x+bw/2)+'" y="'+(Y(acc/3600)-4)+'" text-anchor="middle">'+hrs1(acc)+'</text>';
