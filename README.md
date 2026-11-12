@@ -7,7 +7,7 @@ A personal tracker for daily habits, a YouTube Shorts pipeline and real work hou
 - **Time**: start/pause/finish timer, categories, weekly hours, daily target, sessions you can edit.
 - **Clips**: library of YouTube links, marked used automatically.
 - **Shorts**: make and schedule Shorts with a publish date and time, 48-hour numbers due exactly 48 hours after each Short goes live, 7-day check, and a dashboard (7 / 28 / 90 days, all time or your own dates) with key numbers compared with the period before, a chart, a sortable and filterable table, and the posting times and days that work best.
-- **Progress**: stats, a **Weeks** dashboard (weekly views, retention, subs and hours with your weekly review and tags), and a one-year view.
+- **Progress**: stats, a **Weeks** dashboard (weekly views, retention, subs and hours with your weekly review and tags), and a one-year view. Reaching a milestone shows a celebration, once per device, including when you come back to the app.
 - **More**: sync, settings, backup, reset.
 
 ## Run it

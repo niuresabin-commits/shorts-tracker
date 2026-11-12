@@ -62,7 +62,8 @@ let D=load();
 let NOW=new Date(),T=key(NOW),dow=NOW.getDay();
 let emAsk=false,VIEW="today",progSeg="stats",selDay=T,selPt=null,selSes=T,editShort=null,numId=null,c7Id=null,editClip=null,editSes=null,clipIdx=0,pendingRender=false,finEnd=null;
 let WC=null,WCt=0;   /* derived-work cache, see workCache() */
-const persist=()=>{WC=null;try{localStorage.setItem(LS,JSON.stringify(D))}catch(e){}};
+let msSeen=null,msQuiet=false,msPend=false,msT=null,msTotal=0,syncT0=0;   /* milestone celebrations, see msCheck() */
+const persist=()=>{WC=null;try{localStorage.setItem(LS,JSON.stringify(D))}catch(e){}msSoon()};
 
 /* ---------- derived: streak, shorts, clips ---------- */
 const dayN=()=>Math.max(1,Math.round((new Date(NOW.getFullYear(),NOW.getMonth(),NOW.getDate())-fk(D.start))/864e5)+1);
@@ -279,7 +280,7 @@ async function pushDirty(){
 async function syncNow(){
   if(!SYNC_ON||syncing)return;
   if(!await ensureAuth()){if(!AUTH)setSync("signedout");else setSync("error");return}
-  syncing=true;setSync(dirty.size?"saving":"syncing");
+  syncing=true;syncT0=Date.now();setSync(dirty.size?"saving":"syncing");
   try{
     const rows=await sb("/rest/v1/docs?select=id,u");
     REMOTE=new Set(rows.map(r=>r.id));const seen=new Set();let changed=false;
@@ -294,6 +295,7 @@ async function syncNow(){
     await pushDirty();
     if(changed){D=norm(D);persist();softRender()}
     lastSync=Date.now();setSync(dirty.size?"error":"synced");
+    if(msQuiet){msQuiet=false;msRebase(true)}   /* first sync after signing in here: what it brought was achieved earlier, so no pop-ups for it */
   }catch(e){setSync("error")}
   syncing=false;
 }
@@ -312,7 +314,7 @@ function confirmTap(t,txt,fn){
   setTimeout(()=>{if(t.isConnected){t.dataset.armed="";t.textContent=old}},3200);
 }
 function softRender(){const a=document.activeElement;if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))pendingRender=true;else render()}
-document.addEventListener("focusout",()=>{if(pendingRender){pendingRender=false;setTimeout(render,0)}});
+document.addEventListener("focusout",()=>{if(pendingRender){pendingRender=false;setTimeout(render,0)}if(msPend)msSoon()});
 function taskRow(k,i,title,sub,compact){
   const man=tget(D.days[k],i),der=derivedDone(k,i),dn=man||der;
   return'<label class="task'+(dn?" done":"")+(compact?" c":"")+'"><input type="checkbox" data-a="task" data-k="'+k+'" data-i="'+i+'"'+(dn?" checked":"")+(der?" disabled":"")+'><span class="tx"><b>'+esc(title)+'</b>'+((sub||der)?'<small>'+esc((sub||"")+(der?(sub?" ":"")+"Counted automatically.":""))+'</small>':"")+'</span></label>';
@@ -373,12 +375,19 @@ function streakCheck(kb){
 }
 function showCel(n){
   const t=CELT[n]||[n+" days","Keep going."];
-  $("celc").innerHTML='<div class="sflame lit" style="width:96px;height:96px;margin:0 auto"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-flame"/></svg></div><div class="snum" style="font-size:72px;margin-top:6px">'+n+'</div><div class="slab">day streak</div><h2 class="sec" style="margin-top:14px">'+esc(t[0])+'</h2><p class="mu" style="margin:6px 0 20px">'+esc(t[1])+'</p><button class="btn" data-a="celclose" id="celb">Keep going</button>';
+  /* a streak that is also a milestone (7, 30, 60, 100 days) is celebrated here once, not in a second pop-up */
+  let also="";const fr=msSeen?(msEarned()||[]).filter(m=>!msSeen.has(m.n)&&/^\d+-day streak$/.test(m.n)):[];
+  if(fr.length){fr.forEach(m=>msSeen.add(m.n));msSave();also='<div class="msalso">'+MS_CUP+'<span>Milestone achieved: <b>'+esc(fr[fr.length-1].n)+'</b></span></div>'}
+  $("celc").className="celc";$("celc").innerHTML='<div class="sflame lit" style="width:96px;height:96px;margin:0 auto"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-flame"/></svg></div><div class="snum" style="font-size:72px;margin-top:6px">'+n+'</div><div class="slab">day streak</div><h2 class="sec" style="margin-top:14px">'+esc(t[0])+'</h2><p class="mu" style="margin:6px 0 20px">'+esc(t[1])+'</p>'+also+'<button class="btn" data-a="celclose" id="celb">Keep going</button>';
+  celOpen("Streak milestone");
+}
+function celOpen(label){
   const cel=$("cel");cel.querySelectorAll(".cf").forEach(x=>x.remove());
   if(!(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches)){const cols=["var(--warm)","var(--ac)","var(--good)","var(--bad)"];for(let i=0;i<36;i++){const d=document.createElement("i");d.className="cf";d.style.cssText="left:"+(Math.random()*100).toFixed(1)+"%;background:"+cols[i%4]+";animation-delay:"+(Math.random()*.8).toFixed(2)+"s;animation-duration:"+(2.2+Math.random()*1.6).toFixed(2)+"s";cel.appendChild(d)}}
-  cel.hidden=false;$("celb").focus();
+  cel.setAttribute("aria-label",label);cel.hidden=false;$("celb").focus();
 }
-document.addEventListener("keydown",e=>{if(e.key==="Escape"){$("cel").hidden=true;if(!$("msheet").hidden)closeMsheet()}});
+function celClose(){const c=$("cel");if(c.hidden)return;c.hidden=true;if(msPend)msSoon(350)}
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){celClose();if(!$("msheet").hidden)closeMsheet()}});
 
 /* ---------- clips ---------- */
 function parseYT(s){
@@ -926,6 +935,39 @@ function milestoneList(){
 const msVal=(m,x)=>m.u==="h"?(Math.round(x/360)/10)+"h":m.u==="v"?fmt(x):String(Math.round(x));
 const msOk=m=>m.p>=m.t;
 const msFrac=m=>Math.min(1,m.t?m.p/m.t:0);
+/* ---------- milestone celebrations ---------- */
+/* A milestone is celebrated once on each device, the first time that device sees it achieved, including when you come back to the app.
+   Which ones were already celebrated is remembered in a small browser entry of its own (MS_LS). It is not part of the tracker data:
+   nothing in D is added or changed for this, and it is never synced. No entry yet = start quietly from what is achieved now. */
+const MS_LS="sp5-ms";
+const MS_CUP='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>';
+function msMerge(){try{const j=JSON.parse(localStorage.getItem(MS_LS));if(j&&Array.isArray(j.seen)){if(!msSeen)msSeen=new Set();j.seen.forEach(x=>{if(typeof x==="string")msSeen.add(x)})}}catch(e){}}   /* also picks up what another open tab already celebrated */
+msMerge();
+function msSave(){try{localStorage.setItem(MS_LS,JSON.stringify({seen:Array.from(msSeen)}))}catch(e){}}
+function msEarned(){try{const L=milestoneList();msTotal=L.length;return L.filter(msOk)}catch(e){return null}}
+function msRebase(keep){const e=msEarned();if(!e)return;msSeen=new Set((keep&&msSeen?Array.from(msSeen):[]).concat(e.map(m=>m.n)));msSave()}   /* everything achieved so far counts as already celebrated */
+function msSoon(ms){clearTimeout(msT);msT=setTimeout(msCheck,ms==null?600:ms)}
+function msBusy(){const a=document.activeElement,typing=!!a&&(a.tagName==="TEXTAREA"||a.tagName==="SELECT"||(a.tagName==="INPUT"&&!/^(checkbox|radio|button|submit|file|range)$/i.test(a.type||"")));return document.hidden||!$("cel").hidden||!$("msheet").hidden||typing}
+function msCheck(){
+  if(syncing&&Date.now()-syncT0<8000){msSoon(700);return}   /* wait for a sync in progress, so half-loaded data is never judged */
+  msMerge();
+  if(msSeen===null){msRebase();return}
+  if(msBusy()){msPend=true;return}   /* not while you type, another pop-up is open or the app is in the background; looked at again when that ends */
+  msPend=false;
+  const e=msEarned();if(!e)return;
+  const fresh=e.filter(m=>!msSeen.has(m.n));if(!fresh.length)return;
+  fresh.forEach(m=>msSeen.add(m.n));msSave();
+  showMsCel(fresh,e.length);
+}
+function showMsCel(list,got){
+  const tot=msTotal||list.length,one=list.length===1,rows=list.length<=4?list:list.slice(0,3),more=list.length-rows.length;
+  $("celc").className="celc ms";$("celc").innerHTML='<div class="mscup">'+MS_CUP+'</div><div class="eyebrow" style="margin-top:16px">'+(one?"Milestone achieved":"Milestones achieved")+'</div>'
+   +(one?'<h2 class="mstt">'+esc(list[0].n)+'</h2><p class="mu" style="margin-top:6px">'+esc(list[0].d)+'</p>'
+        :'<h2 class="mstt">'+list.length+' new milestones</h2><div class="mslist">'+rows.map(m=>'<div class="mrow ok"><i class="mk"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chk"/></svg></i><div class="mt"><b>'+esc(m.n)+'</b><span class="sm mu">'+esc(m.d)+'</span></div></div>').join("")+(more>0?'<div class="mrow"><div class="mt"><span class="sm mu">and '+more+' more</span></div></div>':"")+'</div>')
+   +'<div class="msprog"><div class="tbar"><i style="width:'+Math.round(got/tot*100)+'%"></i></div><div class="mu sm num">'+got+' of '+tot+' milestones</div></div>'
+   +'<button class="btn" data-a="celclose" id="celb">Keep going</button><button class="link" data-a="msgo" style="margin-top:8px">See all milestones</button>';
+  celOpen(one?"Milestone achieved":"Milestones achieved");
+}
 let mFilter="all";
 function renderMilestones(){
   const L=milestoneList(),ok=L.filter(msOk).length,next=L.filter(m=>!msOk(m)).sort((a,b)=>msFrac(b)-msFrac(a)).slice(0,3);
@@ -946,7 +988,7 @@ function renderMsheet(){
       return'<div class="mrow'+(o?" ok":"")+'"><i class="mk">'+(o?'<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chk"/></svg>':"")+'</i><div class="mt"><b>'+esc(m.n)+(m.fresh&&!o?' <span class="pill">New</span>':"")+'</b><span class="sm mu">'+esc(m.d)+'</span>'+(o?"":'<div class="mb"><i style="width:'+Math.round(msFrac(m)*100)+'%"></i></div>')+'</div><span class="mv num">'+(o?"Done":msVal(m,m.p)+" / "+msVal(m,m.t))+'</span></div>'}).join("")+'</details>'}).join("")||'<p class="mu" style="padding:12px 0">Nothing here yet.</p>';
 }
 function openMsheet(){mFilter="all";$("msheet").hidden=false;document.documentElement.style.overflow="hidden";renderMsheet();$("msclose").focus()}
-function closeMsheet(){$("msheet").hidden=true;document.documentElement.style.overflow=""}
+function closeMsheet(){$("msheet").hidden=true;document.documentElement.style.overflow="";if(msPend)msSoon(350)}
 function baseRes(){
   const b=D.base,ls=logsSorted(),last=ls.slice(-5),parts=[];
   if(b.s!==""&&b.n!==""){const d=(+b.n)-(+b.s);parts.push("Subscribers: "+(d>=0?"+":"")+fmt(d)+" since day 1.")}
@@ -1387,7 +1429,8 @@ document.addEventListener("click",e=>{
   else if(a==="settest"){D.test={i:+t.dataset.i,r:D.test.r+1};touchMeta();persist();render();toast("Switched test")}
   else if(a==="reset")confirmTap(t,"Tap again to set Day 1 to today",()=>{D.start=T;touchMeta();persist();render();toast("Plan Day 1 is today")});
   else if(a==="export")doExport();
-  else if(a==="celclose")$("cel").hidden=true;
+  else if(a==="celclose")celClose();
+  else if(a==="msgo"){$("cel").hidden=true;openMsheet()}
   else if(a==="mopen")openMsheet();
   else if(a==="mclose")closeMsheet();
   else if(a==="mfilter"){mFilter=t.dataset.f;renderMsheet()}
@@ -1428,7 +1471,7 @@ document.addEventListener("click",e=>{
     m.textContent="Working…";t.disabled=true;
     authCall(a==="signup"?"up":"in",em,pw).then(r=>{
       if(r==="confirm"){m.innerHTML="Account created. Check your email and tap the confirmation link, then come back and sign in.";return}
-      toast("Signed in");renderSync();syncNow();
+      toast("Signed in");renderSync();msQuiet=true;syncNow();
     }).catch(er=>{m.innerHTML='<span class="err">'+esc(authMsg(er))+'</span>'}).finally(()=>{t.disabled=false});
   }
   else if(a==="signout"){AUTH=null;saveAuth();setSync("signedout");renderSync();toast("Signed out. Your data stays on this phone.")}
@@ -1452,6 +1495,7 @@ function wipeAll(){
   D=norm(null);D.u={};keys.forEach(k=>D.u[k]=t);D.u.meta=t;D.u.clips=t;
   persist();Object.keys(D.u).forEach(k=>queue(idOfU(k)));
   selDay=T;selPt=null;selSes=T;editShort=null;numId=null;c7Id=null;editClip=null;editSes=null;clipIdx=0;finEnd=null;clearMake();clearSes();$("nf").hidden=true;$("cf").hidden=true;$("fin").hidden=true;$("wipex").innerHTML="";
+  msSeen=new Set();msSave();
   render();toast("Fresh start. Day 1 is today.");
 }
 document.addEventListener("change",e=>{
@@ -1507,7 +1551,7 @@ $("imp").addEventListener("change",e=>{
     const o=JSON.parse(r.result),d=o&&o.data?o.data:o;if(!d||typeof d.days!=="object"||!Array.isArray(d.logs))throw 0;
     $("impx").innerHTML='<div class="card" style="background:var(--bg)"><b>Found '+Object.keys(d.days).length+' days, '+d.logs.length+' Shorts, '+(d.clips||[]).length+' clips and '+(d.ses||[]).length+' work sessions.</b><p class="sm mu" style="margin:4px 0 10px">Restoring replaces what is in the tracker now.</p><div class="g2"><button class="btn" id="impok">Restore</button><button class="btn2" id="impno">Cancel</button></div></div>';
     $("impok").onclick=()=>{const n=norm(d),t=Date.now();n.u={meta:t,clips:t};Object.keys(n.days).forEach(k=>n.u[k.slice(0,7)]=t);n.logs.forEach(l=>n.u[l.d.slice(0,7)]=t);n.ses.forEach(x=>n.u[x.d.slice(0,7)]=t);
-      Object.keys(D.u).forEach(k=>{if(!n.u[k])n.u[k]=t});D=n;persist();Object.keys(D.u).forEach(k=>queue(idOfU(k)));$("impx").innerHTML="";render();toast("Backup restored")};
+      Object.keys(D.u).forEach(k=>{if(!n.u[k])n.u[k]=t});D=n;persist();msRebase();Object.keys(D.u).forEach(k=>queue(idOfU(k)));$("impx").innerHTML="";render();toast("Backup restored")};
     $("impno").onclick=()=>{$("impx").innerHTML=""};
   }catch(err){$("impx").innerHTML='<p class="err">That file is not a Shorts Tracker backup.</p>'}e.target.value=""};
   r.readAsText(f);
@@ -1523,7 +1567,7 @@ $("imp").addEventListener("change",e=>{
 })();
 window.addEventListener("hashchange",()=>{try{const h=location.hash.slice(1);if(h&&h!==VIEW)go(h,true)}catch(e){}});
 function newDayCheck(){if(key(new Date())!==T){NOW=new Date();T=key(NOW);dow=NOW.getDay();selDay=T;selSes=T;selWeek=null;clearMake();clearSes();render()}}
-document.addEventListener("visibilitychange",()=>{if(!document.hidden){newDayCheck();syncNow();tickTimer()}});
+document.addEventListener("visibilitychange",()=>{if(!document.hidden){newDayCheck();syncNow();tickTimer();msSoon(900)}});
 window.addEventListener("online",()=>syncNow());
 window.addEventListener("focus",newDayCheck);
 setInterval(newDayCheck,30000);
@@ -1533,7 +1577,9 @@ setInterval(()=>{if(document.hidden)return;const sg=uiSig(),a=document.activeEle
   if(sg!==lastSig&&(VIEW=="today"||VIEW==="shorts"||VIEW==="time")&&!(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)))render();
   lastSig=sg},20000);
 setInterval(()=>{if(!document.hidden)syncNow()},60000);
+setInterval(()=>{if(!document.hidden&&!syncing)msSoon(1500)},60000);   /* milestones reached just by time passing (a running timer) */
 persist();
 if(SYNC_ON&&AUTH)syncNow();
+msSoon(1200);
 try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
 if("serviceWorker" in navigator&&location.protocol.indexOf("http")===0)window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
