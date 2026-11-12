@@ -60,7 +60,7 @@ function norm(d){
 function load(){try{const s=localStorage.getItem(LS);if(s)return norm(JSON.parse(s))}catch(e){}return norm(null)}
 let D=load();
 let NOW=new Date(),T=key(NOW),dow=NOW.getDay();
-let VIEW="today",progSeg="stats",selDay=T,selPt=null,selSes=T,editShort=null,numId=null,c7Id=null,editClip=null,editSes=null,clipIdx=0,pendingRender=false,finEnd=null;
+let emAsk=false,VIEW="today",progSeg="stats",selDay=T,selPt=null,selSes=T,editShort=null,numId=null,c7Id=null,editClip=null,editSes=null,clipIdx=0,pendingRender=false,finEnd=null;
 let WC=null,WCt=0;   /* derived-work cache, see workCache() */
 const persist=()=>{WC=null;try{localStorage.setItem(LS,JSON.stringify(D))}catch(e){}};
 
@@ -78,7 +78,7 @@ const total=k=>taskIds(k).length;
 const tget=(r,i)=>r?(i<5?(r.c&&r.c[i]?1:0):(r.c2&&r.c2[i-5]?1:0)):0;
 function tset(r,i,v){if(i<5)r.c[i]=v?1:0;else{if(!r.c2)r.c2=[0,0,0];r.c2[i-5]=v?1:0}}
 const MKED=c=>c.id==="mk"||c.id==="ed"||/\b(making|editing|edit)\b/i.test(c.n||"");
-function tgtH(k){const h=+D.goal.h||0;if(!isCollege(fk(k).getDay()))return h;return D.goal.cd!=null&&D.goal.cd!==""?(+D.goal.cd||0):Math.min(2,h)}
+function tgtH(k){const h=+D.goal.h||0;let g;if(!isCollege(fk(k).getDay()))g=h;else g=D.goal.cd!=null&&D.goal.cd!==""?(+D.goal.cd||0):Math.min(2,h);return emDay(k)&&g>0?Math.min(1,g):g}
 /* seconds worked per day (and per category) plus how many Shorts are live per day, in one pass; refreshed every 15 s and whenever data is saved */
 function workCache(){
   const now=Date.now();if(WC&&now-WCt<15000)return WC;
@@ -104,6 +104,10 @@ const cnt=k=>taskIds(k).reduce((s,i)=>s+(tdone(k,i)?1:0),0);
 const isFull=k=>cnt(k)>=total(k);
 const liveCount=k=>workCache().live[k]||0;
 const isRest=k=>!!(D.days[k]&&D.days[k].r);
+/* Emergency day: an optional extra mark (em) on one day. It saves habit streaks and lowers that day's work target to 1 hour. */
+const EM_MAX=2;
+const emDay=k=>!!(D.days[k]&&D.days[k].em);
+const emUsed=k=>Object.keys(D.days).filter(x=>x.slice(0,7)===k.slice(0,7)&&x!==k&&D.days[x]&&D.days[x].em).length;
 const kept=k=>isRest(k)||cnt(k)>=KEEP;
 /* every calendar day from the start (or the earliest record) to today, so days that only count automatically are included */
 function dayKeysAll(){const ks=Object.keys(D.days).sort();let a=D.start;if(ks.length&&ks[0]<a)a=ks[0];const out=[];for(let d=fk(a);key(d)<=T;d=ad(d,1))out.push(key(d));return out}
@@ -149,7 +153,7 @@ function coreFor(){
    3:{t:"Save 1 good clip",s:"Paste a YouTube link in Clips when you find one. 7 a week covers every Short."},
    4:n||n7?{t:"Fill in numbers · "+(n+n7)+" due",s:"Shorts that are 48 hours old have full stats now. Open the Shorts tab."}
           :{t:"Numbers: nothing due today",s:"No Short is 48 hours old yet. Tick this to count it."},
-   5:{t:"Work target · "+fmtDur(secT)+" of "+(tg>0?fmtDur(tg*3600):"–"),s:tg>0?(col?"College-day target. ":"Daily target. ")+"Counted from your timer. Forgot to start it? Add the time in Time, or tick this by hand.":"Set a daily target in More. Until then, tick this by hand."},
+   5:{t:"Work target · "+fmtDur(secT)+" of "+(tg>0?fmtDur(tg*3600):"–"),s:tg>0?(emDay(T)?"Emergency day: just 1 hour today. ":col?"College-day target. ":"Daily target. ")+"Counted from your timer. Forgot to start it? Add the time in Time, or tick this by hand.":"Set a daily target in More. Until then, tick this by hand."},
    6:{t:"Making or editing · "+fmtDur(mk)+" of 1h",s:"Timed under Making Shorts or Editing. Tick by hand if you forgot the timer."},
    7:{t:"Study your channel analytics · 30 min",s:"Sunday only. Compare what worked, note the retention, decide what to change next. Counts when you save your weekly review."}
   };
@@ -182,12 +186,13 @@ function weekWork(off){
 /* ---------- derived: habits ---------- */
 const habDone=(h,k)=>!!(D.days[k]&&D.days[k].h&&D.days[k].h[h.id]);
 const habSched=(h,k)=>h.dw.indexOf(fk(k).getDay())>=0;
-function habStreak(h){let d=fk(T),n=0;for(let i=0;i<800;i++){const k=key(d);if(k<h.added)break;if(habSched(h,k)){if(habDone(h,k))n++;else if(k!==T)break}d=ad(d,-1)}return n}
-function habRate(h){let s=0,dn=0;for(let i=0;i<30;i++){const k=key(ad(fk(T),-i));if(k<h.added)break;if(habSched(h,k)){s++;if(habDone(h,k))dn++}}return s?Math.round(dn/s*100):null}
+function habStreak(h){let d=fk(T),n=0;for(let i=0;i<800;i++){const k=key(d);if(k<h.added)break;if(habSched(h,k)){if(habDone(h,k))n++;else if(emDay(k)){}else if(k!==T)break}d=ad(d,-1)}return n}
+function habRate(h){let s=0,dn=0;for(let i=0;i<30;i++){const k=key(ad(fk(T),-i));if(k<h.added)break;if(habSched(h,k)&&(habDone(h,k)||!emDay(k))){s++;if(habDone(h,k))dn++}}return s?Math.round(dn/s*100):null}
 /* Flexible habits: a weekly goal (h.wk times a week, any days). Habits without h.wk work exactly as before.
    The streak counts days you did it. Within each Monday-Sunday week you may miss (7 - wk) days without breaking it;
    one more miss breaks it, and the streak then starts again with a fresh allowance. */
 const habFlex=h=>(+h.wk||0)>0;
+const habGoal=h=>Math.max(0,h.wk-weekKeys(T).filter(x=>x<=T&&emDay(x)&&!habDone(h,x)).length);   /* an emergency day lowers that week's goal by one */
 function habSim(h){
   const allow=Math.max(0,7-h.wk),st={};let start=h.added;
   Object.keys(D.days).forEach(k=>{const r=D.days[k];if(r.h&&r.h[h.id]&&k<start)start=k});
@@ -195,19 +200,20 @@ function habSim(h){
   for(let d=fk(start);key(d)<T;d=ad(d,1)){
     const k=key(d),w=key(mondayOf(d));if(w!==wkKey){wkKey=w;rests=0}
     if(habDone(h,k)){c++;if(c>best)best=c;st[k]="d"}
+    else if(emDay(k))st[k]="e"
     else{rests++;if(rests>allow){c=0;rests=0;st[k]="x"}else st[k]="r"}
   }
   if(key(mondayOf(fk(T)))!==wkKey)rests=0;
-  const dn=habDone(h,T);if(dn){c++;if(c>best)best=c;st[T]="d"}
+  const dn=habDone(h,T);if(dn){c++;if(c>best)best=c;st[T]="d"}else if(emDay(T))st[T]="e";
   return{c,best,rests,allow,start,st,doneToday:dn};
 }
 function flexRow(h){
-  const sm=habSim(h),wk=weekKeys(T),wd=["M","T","W","T","F","S","S"],left=Math.max(0,sm.allow-sm.rests),got=wk.filter(k=>k<=T&&habDone(h,k)).length,risk=!sm.doneToday&&sm.c>0&&sm.rests>=sm.allow;
-  const status=sm.doneToday?"Done today":risk?"Do it today to keep your streak":left+" rest day"+(left===1?"":"s")+" left this week";
-  const days=wk.map((k,i)=>{const f=k>T,cl=f?"f":habDone(h,k)?"d":k===T?"t":(sm.st[k]||"n");
-    const ic=cl==="d"?'<svg viewBox="0 0 24 24"><use href="#i-chk"/></svg>':cl==="r"?'<svg viewBox="0 0 24 24"><use href="#i-moon"/></svg>':cl==="x"?"×":"";
+  const sm=habSim(h),wk=weekKeys(T),wd=["M","T","W","T","F","S","S"],left=Math.max(0,sm.allow-sm.rests),got=wk.filter(k=>k<=T&&habDone(h,k)).length,risk=!sm.doneToday&&!emDay(T)&&sm.c>0&&sm.rests>=sm.allow,goal=habGoal(h);
+  const status=sm.doneToday?"Done today":emDay(T)?"Emergency day: streak is safe":risk?"Do it today to keep your streak":left+" rest day"+(left===1?"":"s")+" left this week";
+  const days=wk.map((k,i)=>{const f=k>T,cl=f?"f":habDone(h,k)?"d":emDay(k)?"e":k===T?"t":(sm.st[k]||"n");
+    const ic=cl==="d"?'<svg viewBox="0 0 24 24"><use href="#i-chk"/></svg>':cl==="e"?"!":cl==="r"?'<svg viewBox="0 0 24 24"><use href="#i-moon"/></svg>':cl==="x"?"×":"";
     return'<button class="hd '+cl+(k===T?" td":"")+'" data-a="hday" data-id="'+esc(h.id)+'" data-k="'+k+'"'+(f?" disabled":"")+' aria-label="'+DOW[(i+1)%7]+(habDone(h,k)?", done":"")+'"><i>'+ic+'</i><span>'+wd[i]+'</span></button>'}).join("");
-  return'<div class="hflex"><div class="lgt"><div><b>'+esc(h.n)+'</b><div class="sm" style="'+(risk?"color:var(--warm);font-weight:600":"color:var(--mu)")+'">'+(got>=h.wk?got+' this week · goal met':got+' of '+h.wk+' this week')+' · '+status+'</div></div><span class="hs"><svg viewBox="0 0 24 24"><use href="#i-flame"/></svg>'+sm.c+'</span></div><div class="hdays">'+days+'</div></div>';
+  return'<div class="hflex"><div class="lgt"><div><b>'+esc(h.n)+'</b><div class="sm" style="'+(risk?"color:var(--warm);font-weight:600":"color:var(--mu)")+'">'+(got>=goal?got+' this week · goal met':got+' of '+goal+' this week')+' · '+status+'</div></div><span class="hs"><svg viewBox="0 0 24 24"><use href="#i-flame"/></svg>'+sm.c+'</span></div><div class="hdays">'+days+'</div></div>';
 }
 function flexHabitRows(k){
   const hs=D.habits.filter(habFlex);if(!hs.length)return"";
@@ -320,6 +326,23 @@ function setTask(k,i,on){
   if(k===T)streakCheck(kb);
 }
 function celebrate(){toast("All "+total(T)+" done. +10 bonus XP.");const r=$("ringw");if(r){r.classList.remove("pop");void r.offsetWidth;r.classList.add("pop")}}
+function toggleEm(){
+  const kb=kept(T),f0=isFull(T);
+  if(emDay(T)){delete D.days[T].em;toast("Emergency day removed")}
+  else{if(emUsed(T)>=EM_MAX){toast("No emergency days left this month");return}rec(T).em=1;toast("Emergency day on. Streaks are safe and the work target is 1 hour.")}
+  emAsk=false;touchDay(T);persist();
+  if(!f0&&isFull(T))celebrate();
+  render();streakCheck(kb);
+}
+function renderEmergency(){
+  const on=emDay(T),left=Math.max(0,EM_MAX-emUsed(T)-(on?1:0)),tri='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.5 20h19L12 3Z"/><path d="M12 10v4.5M12 17.5v.01"/></svg>';
+  let h;
+  if(on)h='<div class="emc on"><div class="emh">'+tri+'<b>Emergency day is ON</b></div><p class="sm">Your gym and running streaks are safe today, and your work target is 1 hour. '+left+' left this month.</p><button class="embtn out" data-a="emtoggle">Undo emergency day</button></div>';
+  else if(emUsed(T)>=EM_MAX)h='<div class="emc off"><div class="emh">'+tri+'<b>Emergency day</b></div><p class="sm">None left this month. You used '+EM_MAX+' of '+EM_MAX+'.</p></div>';
+  else if(emAsk)h='<div class="emc ask"><div class="emh">'+tri+'<b>Use an emergency day?</b></div><p class="sm">Only for being really sick or a real emergency. Your gym and running streaks are saved and your work target drops to 1 hour. This uses 1 of your '+EM_MAX+' this month ('+(EM_MAX-emUsed(T))+' left).</p><div class="g2"><button class="embtn" data-a="emyes">Yes, use it</button><button class="embtn out" data-a="emno">Cancel</button></div></div>';
+  else h='<button class="embtn wide" data-a="emask"><span class="emh">'+tri+'<b>EMERGENCY DAY</b></span><small>Sick or a real emergency · '+(EM_MAX-emUsed(T))+' left this month</small></button>';
+  $("emerg").innerHTML=h;
+}
 function weekHasOtherRest(k){return weekKeys(k).some(x=>x!==k&&isRest(x))}
 function toggleRest(k){
   if(isRest(k)){delete D.days[k].r;toast("Rest day removed")}
@@ -581,9 +604,9 @@ function renderHabitsToday(){
 function renderHabitStats(){
   $("hstat").innerHTML=D.habits.length?D.habits.map(h=>{
     if(habFlex(h)){
-      const sm=habSim(h);let dots="";for(let i=13;i>=0;i--){const k=key(ad(fk(T),-i));dots+='<i class="'+(habDone(h,k)?"d":sm.st[k]==="r"?"r":sm.st[k]==="x"?"x":"n")+'"></i>'}
+      const sm=habSim(h);let dots="";for(let i=13;i>=0;i--){const k=key(ad(fk(T),-i));dots+='<i class="'+(habDone(h,k)?"d":sm.st[k]==="e"?"e":sm.st[k]==="r"?"r":sm.st[k]==="x"?"x":"n")+'"></i>'}
       const got=weekKeys(T).filter(k=>k<=T&&habDone(h,k)).length;
-      return'<div class="hrow"><div class="lgt"><b>'+esc(h.n)+' <span class="pill">'+h.wk+'× a week</span></b><span class="num"><b>'+sm.c+'</b> <span class="mu sm">day streak</span></span></div><div class="mu sm">Best streak '+sm.best+' days · '+(got>=h.wk?got+' this week, goal met':got+' of '+h.wk+' this week')+'</div><div class="hdots">'+dots+'</div></div>';
+      return'<div class="hrow"><div class="lgt"><b>'+esc(h.n)+' <span class="pill">'+h.wk+'× a week</span></b><span class="num"><b>'+sm.c+'</b> <span class="mu sm">day streak</span></span></div><div class="mu sm">Best streak '+sm.best+' days · '+(got>=habGoal(h)?got+' this week, goal met':got+' of '+habGoal(h)+' this week')+'</div><div class="hdots">'+dots+'</div></div>';
     }
     let dots="";for(let i=13;i>=0;i--){const k=key(ad(fk(T),-i));dots+='<i class="'+(k<h.added||!habSched(h,k)?"n":habDone(h,k)?"d":"")+'"></i>'}
     const r=habRate(h);
@@ -618,7 +641,7 @@ function renderToday(){
   const dr=dueRows();
   $("due").innerHTML=dr?'<div class="card due"><div class="eyebrow" style="color:var(--ink);margin-bottom:4px">Numbers are ready</div>'+dr+'</div>':"";
   $("core").innerHTML=coreFor().map(c=>taskRow(T,c.i,c.t,c.s)+(c.i===7&&!derivedDone(T,7)?'<div style="padding:0 0 12px 40px"><button class="link" data-a="wkreview">Open weekly review →</button></div>':"")).join("");
-  renderHabitsToday();
+  renderHabitsToday();renderEmergency();
 
   const un=unused();
   if(!un.length)$("tclip").innerHTML='<div class="card"><div class="eyebrow">Today\'s clip</div><p style="margin-top:6px">No saved clips yet. Paste a YouTube link below the moment you find a good one.</p></div>';
@@ -834,7 +857,7 @@ function renderYear(){
       g+=(k<D.start?'<i class="yc pre"></i>':'<button class="yc '+c+(k===T?" td":"")+(k===selDay?" pk":"")+'" data-a="day" data-k="'+k+'" aria-label="'+fdl(k)+'"></button>')}});
   $("ygrid").innerHTML=g+'</div>';
   const k=selDay,n=cnt(k),logs=shortsOn(k),ws=secOn(k);
-  $("dayd").innerHTML='<div class="dayh"><div><div class="eyebrow">'+(k===T?"Today":"Selected day")+'</div><b>'+fdl(k)+'</b></div><span class="pill'+(n>=total(k)?" g":"")+'">'+(isRest(k)?"Rest day":n+" of "+total(k)+" · "+xpOf(k)+" XP")+'</span></div>'
+  $("dayd").innerHTML='<div class="dayh"><div><div class="eyebrow">'+(k===T?"Today":"Selected day")+'</div><b>'+fdl(k)+'</b></div><span class="pill'+(n>=total(k)?" g":"")+'">'+(isRest(k)?"Rest day":n+" of "+total(k)+" · "+xpOf(k)+" XP")+(emDay(k)?" · Emergency":"")+'</span></div>'
    +(k>T?'<p class="mu sm">This day has not happened yet.</p>':taskIds(k).map(i=>taskRow(k,i,k<TASKS_FROM?CORE_T[i]:TASK_TITLES[i],"",true)).join("")+flexHabitRows(k)
    +'<button class="btn2 full" data-a="rest" data-k="'+k+'" style="margin-top:8px"'+(!isRest(k)&&weekHasOtherRest(k)?" disabled":"")+'>'+(isRest(k)?"Undo rest day":!isRest(k)&&weekHasOtherRest(k)?"Rest day already used this week":"Mark as rest day")+'</button>')
    +(ws>0?'<div class="rvh">Work time</div><div class="kv"><span>Tracked</span><b>'+fmtDur(ws)+'</b></div>':"")
@@ -850,7 +873,7 @@ function renderYear(){
 /* ---------- milestones ---------- */
 /* Worked out from saved records every time, so nothing is stored and nothing can be reset.
    Each item: group, name, description, current value p, target t, unit. Achieved when p >= t. */
-function habBest(h){let c=0,b=0;for(let d=fk(h.added);key(d)<=T;d=ad(d,1)){const k=key(d);if(!habSched(h,k))continue;if(habDone(h,k)){c++;if(c>b)b=c}else if(k!==T)c=0}return b}
+function habBest(h){let c=0,b=0;for(let d=fk(h.added);key(d)<=T;d=ad(d,1)){const k=key(d);if(!habSched(h,k))continue;if(habDone(h,k)){c++;if(c>b)b=c}else if(k!==T&&!emDay(k))c=0}return b}
 function milestoneList(){
   const dn=done(),tv=dn.reduce((s,l)=>s+l.v,0),bs=bestStreak().n,ks=dayKeysAll(),allSec=D.ses.reduce((s,x)=>s+sesSec(x),0);
   const weeks={};ks.forEach(x=>{const w=key(mondayOf(fk(x)));(weeks[w]=weeks[w]||[]).push(x)});
@@ -1293,7 +1316,7 @@ function render(){renderHead();VIEWS[VIEW]()}
 function go(t,noHash){
   if(t==="year"){progSeg="year";t="prog"}else if(t==="stats"){progSeg="stats";t="prog"}else if(t==="weeks"){progSeg="weeks";t="prog"}
   if(t==="plan")t="more";if(t==="log")t="shorts";
-  if(!VIEWS[t])t="today";VIEW=t;
+  if(!VIEWS[t])t="today";VIEW=t;emAsk=false;
   document.querySelectorAll(".app>.view").forEach(v=>v.classList.toggle("on",v.id==="v-"+t));
   document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===t));
   render();if(!noHash){try{history.replaceState(null,"","#"+(t==="prog"&&progSeg!=="stats"?progSeg:t))}catch(e){}}
@@ -1329,6 +1352,9 @@ document.addEventListener("click",e=>{
   else if(a==="wdgo"){try{$("wdrev").scrollIntoView({block:"start",behavior:"smooth"})}catch(e){}}
   else if(a==="wkreview"){selWeek=curMk();go("weeks");try{$("wdrev").scrollIntoView({block:"start"})}catch(e){}}
   else if(a==="rest")toggleRest(t.dataset.k||T);
+  else if(a==="emask"){emAsk=true;renderEmergency()}
+  else if(a==="emno"){emAsk=false;renderEmergency()}
+  else if(a==="emyes"||a==="emtoggle")toggleEm();
   else if(a==="xadd"){const x=$("xt");if(!x.value.trim())return;rec(T).x.push({t:x.value.trim(),v:+$("xv").value});x.value="";touchDay(T);persist();render()}
   else if(a==="xdel"){rec(T).x.splice(+t.dataset.i,1);touchDay(T);persist();render()}
   else if(a==="sug"){const s=SUGS_ALL[phase()][+t.dataset.i];rec(T).x.push({t:s[0],v:s[1]});touchDay(T);persist();render()}
