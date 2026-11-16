@@ -5,7 +5,7 @@ A personal tracker for daily habits, a YouTube Shorts pipeline and real work hou
 - **Today**: 7 daily tasks (8 on Sundays), streak, work timer, habits, clip of the day. The work-hours, making/editing and Sunday-analytics tasks tick themselves from the timer and your weekly review.
 - **Emergency day** (Today): for being really sick or a real emergency, 2 a month. Saves habit streaks, lowers that day's work target to 1 hour. Two taps to use, one tap to undo.
 - **Time**: start/pause/finish timer, categories, weekly hours, daily target, sessions you can edit.
-- **Clips**: library of YouTube links, marked used automatically.
+- **Clips**: library of YouTube links, marked used automatically. Tabs for Unused / Used / All, search (also to check if you used something before), compact rows with a small picture, and the views each used clip's Short got.
 - **Shorts**: make and schedule Shorts with a publish date and time, 48-hour numbers due exactly 48 hours after each Short goes live, 7-day check, and a dashboard (7 / 28 / 90 days, all time or your own dates) with key numbers compared with the period before, a chart, a sortable and filterable table, and the posting times and days that work best.
 - **Progress**: stats, a **Weeks** dashboard (weekly views, retention, subs and hours with your weekly review and tags), and a one-year view. Reaching a milestone shows a celebration, once per device, including when you come back to the app.
 - **More**: sync, settings, backup, reset.

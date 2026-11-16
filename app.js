@@ -417,19 +417,53 @@ function addClip(lid,nid,oid,wid,force){
   }
   D.clips.push({id:newId(),vid:p.vid,t0:p.t0,label:$(nid).value.trim(),note:oid?$(oid).value.trim():"",added:T,used:null,usedOn:null});
   $(lid).value="";$(nid).value="";if(oid)$(oid).value="";
+  clQ="";if($("cq"))$("cq").value="";clTab="un";clSel=null;clLimit=CL_PAGE;   /* show the clip you just saved */
   const kb=kept(T);touchClips();const first=tick(T,3);persist();render();streakCheck(kb);
   toast(first&&isFull(T)?"Clip saved. All done!":"Clip saved"+(first?" and ticked off":""));
   if(first&&isFull(T))celebrate();
 }
+/* ---------- clip library view ---------- */
+/* Only a different way of showing the clips you already have: nothing about a clip is changed by looking, searching or sorting.
+   Which tab, search words and open row you picked only live on this screen. */
+let clTab="un",clQ="",clSel=null,clLimit=15,clSort="used";
+const CL_PAGE=15;
+const clipShort=c=>c.used?(D.logs.find(x=>x.id===c.used)||null):null;
+function clMatch(c,words){
+  if(!words.length)return true;
+  const s=clipShort(c),hay=inNorm([clipName(c),c.note,s?s.t:"",c.vid].join(" "));
+  return words.every(w=>hay.indexOf(w)>=0);
+}
+const clThumb=c=>'<span class="cth"><img src="https://i.ytimg.com/vi/'+esc(c.vid)+'/mqdefault.jpg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"></span>';
+function clRow(c){
+  if(editClip===c.id)return'<div class="cr open"><div class="cx"><label class="fld"><span>What is it?</span><input id="ce1" value="'+esc(c.label)+'"></label><label class="fld"><span>Note</span><input id="ce2" value="'+esc(c.note||"")+'"></label><div class="lga"><button class="btn2 pri" data-a="csave" data-id="'+esc(c.id)+'">Save</button><button class="btn2" data-a="ccancel">Cancel</button></div></div></div>';
+  const open=clSel===c.id,s=clipShort(c),id=esc(c.id),used=!!c.used;
+  const meta=used?"Used "+fd(okKey(c.usedOn)?c.usedOn:T)+(s?" · "+esc(s.t):""):(okKey(c.added)?"Saved "+fd(c.added):"Saved")+(c.t0?" · starts at "+mmss(c.t0):"");
+  const right=used?(s&&s.lg?'<span class="crv'+(+s.v>=1000?" g":"")+'">'+kf(+s.v||0)+'<small>views</small></span>':s?'<span class="crv mu"><small>waiting</small></span>':""):'<button class="btn2 pri crb" data-a="mkclip" data-id="'+id+'">Make a Short</button>';
+  const open7=open?'<div class="cx">'+(c.note?'<div class="sm">'+esc(c.note)+'</div>':"")
+    +(used?'<div class="sm mu">Made into'+(s?' “'+esc(s.t)+'”':" a Short")+" on "+fd(okKey(c.usedOn)?c.usedOn:T)+(s&&s.lg?" · "+fmt(s.v)+" views"+(+s.v>=1000?" · over the 1,000 floor":""):s?" · numbers not in yet":"")+'.</div>':"")
+    +'<div class="lga"><a class="btn2" href="'+esc(clipUrl(c))+'" target="_blank" rel="noopener noreferrer">Open on YouTube</a>'
+    +(used?'<button class="btn2" data-a="cunuse" data-id="'+id+'">Mark unused</button>':'<button class="btn2" data-a="cedit" data-id="'+id+'">Edit</button><button class="btn2" data-a="cdel" data-id="'+id+'">Delete</button>')+'</div></div>':"";
+  return'<div class="cr'+(open?" open":"")+(used?" used":"")+'"><div class="crm">'+clThumb(c)
+    +'<button class="crh" data-a="cpick" data-id="'+id+'" aria-expanded="'+open+'"><b>'+esc(clipName(c))+'</b><span class="mu sm">'+meta+'</span></button>'+right+'<span class="crc" aria-hidden="true"></span></div>'+open7+'</div>';
+}
 function renderClips(){
-  const un=unused(),us=D.clips.filter(c=>c.used);
-  $("cuh").textContent="Unused clips ("+un.length+")";
-  const card=c=>{
-    if(editClip===c.id)return'<div class="lg"><label class="fld"><span>What is it?</span><input id="ce1" value="'+esc(c.label)+'"></label><label class="fld"><span>Note</span><input id="ce2" value="'+esc(c.note||"")+'"></label><div class="lga"><button class="btn2 pri" data-a="csave" data-id="'+c.id+'">Save</button><button class="btn2" data-a="ccancel">Cancel</button></div></div>';
-    return'<div class="lg"><div class="lgt"><div><b>'+esc(clipName(c))+'</b><div class="mu sm">Saved '+fd(c.added)+(c.t0?" · starts at "+mmss(c.t0):"")+'</div>'+(c.note?'<div class="sm" style="margin-top:3px">'+esc(c.note)+'</div>':"")+'</div></div><div class="lga"><a class="btn2" href="'+esc(clipUrl(c))+'" target="_blank" rel="noopener noreferrer">Open on YouTube</a><button class="btn2 pri" data-a="mkclip" data-id="'+c.id+'">Make a Short</button><button class="btn2" data-a="cedit" data-id="'+c.id+'">Edit</button><button class="btn2" data-a="cdel" data-id="'+c.id+'">Delete</button></div></div>'};
-  $("cun").innerHTML=un.length?un.map(card).join(""):'<span class="mu">No unused clips. Paste a YouTube link above and it lands here, ready for your next Short.</span>';
-  $("cus").innerHTML=us.length?us.slice().sort((a,b)=>(b.usedOn||"")>(a.usedOn||"")?1:-1).map(c=>{const s=D.logs.find(x=>x.id===c.used);
-    return'<div class="lg"><div class="lgt"><div><b>'+esc(clipName(c))+'</b><div class="mu sm">Used '+fd(c.usedOn||T)+(s?" · "+esc(s.t):"")+'</div></div></div><div class="lga"><a class="btn2" href="'+esc(clipUrl(c))+'" target="_blank" rel="noopener noreferrer">Open</a><button class="btn2" data-a="cunuse" data-id="'+c.id+'">Mark unused</button></div></div>'}).join(""):'<span class="mu">Clips you turn into Shorts move here automatically.</span>';
+  const words=inNorm(clQ).split(" ").filter(Boolean),all=D.clips.filter(c=>clMatch(c,words)),un=all.filter(c=>!c.used),us=all.filter(c=>c.used);
+  $("cseg").innerHTML=[["un","Unused",un.length],["us","Used",us.length],["all","All",all.length]].map(t=>'<button role="tab" aria-selected="'+(clTab===t[0])+'" data-a="cseg" data-s="'+t[0]+'"'+(clTab===t[0]?' class="on"':"")+'>'+t[1]+' <span class="num">'+t[2]+'</span></button>').join("");
+  const byAdded=a=>a.map((c,i)=>[c,i]).sort((x,y)=>x[0].added<y[0].added?1:x[0].added>y[0].added?-1:y[1]-x[1]).map(x=>x[0]);
+  let list;
+  if(clTab==="un")list=byAdded(un);
+  else if(clTab==="us"){
+    list=us.map((c,i)=>[c,i]);
+    if(clSort==="views")list.sort((x,y)=>{const a=clipShort(x[0]),b=clipShort(y[0]),av=a&&a.lg?+a.v||0:-1,bv=b&&b.lg?+b.v||0:-1;return bv-av||y[1]-x[1]});
+    else list.sort((x,y)=>(x[0].usedOn||"")<(y[0].usedOn||"")?1:(x[0].usedOn||"")>(y[0].usedOn||"")?-1:y[1]-x[1]);
+    list=list.map(x=>x[0]);
+  }else list=byAdded(all);
+  $("csort").hidden=clTab!=="us"||list.length<2;
+  $("csort").innerHTML=[["used","Recently used"],["views","Most views"]].map(t=>'<button data-a="csort" data-s="'+t[0]+'"'+(clSort===t[0]?' class="on"':"")+'>'+t[1]+'</button>').join("");
+  $("chint").innerHTML=words.length&&clTab!=="us"&&us.length?'<button class="link" data-a="cseg" data-s="us">'+us.length+" matching clip"+(us.length===1?"":"s")+" you already used →</button>":"";
+  const shown=list.slice(0,clLimit);
+  $("clist").innerHTML=list.length?shown.map(clRow).join(""):'<p class="mu" style="padding:6px 0">'+(words.length?"No clips match “"+esc(clQ.trim())+"”.":clTab==="un"?"No unused clips. Paste a YouTube link above and it lands here, ready for your next Short.":clTab==="us"?"Clips you turn into Shorts move here automatically.":"No clips yet.")+"</p>";
+  $("cmore").innerHTML=list.length>shown.length?'<div class="shmore"><button class="btn2" data-a="cmorec">Show '+Math.min(CL_PAGE,list.length-shown.length)+" more · "+(list.length-shown.length)+" left</button></div>":"";
 }
 
 /* ---------- work timer ---------- */
@@ -1560,6 +1594,10 @@ document.addEventListener("click",e=>{
   else if(a==="clipno")$(t.dataset.w).innerHTML="";
   else if(a==="cnext"){clipIdx++;renderToday()}
   else if(a==="mkclip"){go("shorts");$("m1").value=id;$("m2").value=$("m2").value||clipName(clipById(id)||{});$("m2").focus()}
+  else if(a==="cseg"){clTab=t.dataset.s;clLimit=CL_PAGE;clSel=null;editClip=null;renderClips()}
+  else if(a==="csort"){clSort=t.dataset.s;clLimit=CL_PAGE;renderClips()}
+  else if(a==="cpick"){clSel=clSel===id?null:id;renderClips()}
+  else if(a==="cmorec"){clLimit+=CL_PAGE;renderClips()}
   else if(a==="cedit"){editClip=id;renderClips()}
   else if(a==="ccancel"){editClip=null;renderClips()}
   else if(a==="csave"){const c=clipById(id);if(c){c.label=$("ce1").value.trim();c.note=$("ce2").value.trim();touchClips();persist()}editClip=null;render()}
@@ -1682,6 +1720,8 @@ document.addEventListener("input",e=>{
   });
 });
 ["n4","n5"].forEach(i=>$(i).addEventListener("input",npv));
+$("cq").addEventListener("input",()=>{clQ=$("cq").value;clLimit=CL_PAGE;clSel=null;renderClips()});
+document.addEventListener("error",e=>{const t=e.target;if(t&&t.tagName==="IMG"&&t.parentNode&&t.parentNode.className==="cth")t.style.display="none"},true);   /* thumbnail not available (offline): the grey box stays */
 $("mf").addEventListener("submit",saveShort);
 ["m5","m6"].forEach(id=>["input","change"].forEach(ev=>$(id).addEventListener(ev,renderMakeTime)));
 ["shf","sht"].forEach(id=>["input","change"].forEach(ev=>$(id).addEventListener(ev,()=>{shFrom=$("shf").value;shTo=$("sht").value;shBucket=null;shLimit=25;renderShDash()})));
