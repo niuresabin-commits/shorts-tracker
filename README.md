@@ -34,6 +34,10 @@ Open the Pages link in **Safari → Share → Add to Home Screen**.
 
 The anon key is designed to be public. Row-level security (in `supabase.sql`) makes each row readable and writable only by its owner.
 
+## Clip agent inbox (optional)
+
+A separate drop box another program can add clip ideas and view numbers to. They show on **Today** as a card with **Accept / Dismiss**, and nothing reaches your data until you accept. Setup and the data format are in `INBOX.md`; the database part is `supabase-inbox.sql`.
+
 ## How data is stored
 
 One `docs` table, one row per document: `meta` (settings, habits, categories, timer), `clips`, and one `m-YYYY-MM` row per month (days, Shorts, work sessions). The newest write wins per document. Use **More → Save a backup file** for your own copy.

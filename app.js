@@ -295,6 +295,7 @@ async function syncNow(){
     await pushDirty();
     if(changed){D=norm(D);persist();softRender()}
     lastSync=Date.now();setSync(dirty.size?"error":"synced");
+    inboxPull();
     if(msQuiet){msQuiet=false;msRebase(true)}   /* first sync after signing in here: what it brought was achieved earlier, so no pop-ups for it */
   }catch(e){setSync("error")}
   syncing=false;
@@ -649,6 +650,7 @@ function renderToday(){
   renderStreak();renderTimerCards();
   const dr=dueRows();
   $("due").innerHTML=dr?'<div class="card due"><div class="eyebrow" style="color:var(--ink);margin-bottom:4px">Numbers are ready</div>'+dr+'</div>':"";
+  renderInbox();
   $("core").innerHTML=coreFor().map(c=>taskRow(T,c.i,c.t,c.s)+(c.i===7&&!derivedDone(T,7)?'<div style="padding:0 0 12px 40px"><button class="link" data-a="wkreview">Open weekly review →</button></div>':"")).join("");
   renderHabitsToday();renderEmergency();
 
@@ -1317,6 +1319,159 @@ function renderShDash(){
   $("shwn").innerHTML='<span>Sh = Shorts with 48-hour numbers. Morning is before noon, evening is after 6 PM. 1k+ is the share that passed 1,000 views.</span><span>These are clues, not proof. Trust a gap only when each row has 3 or more Shorts.</span>';
 }
 
+/* ---------- inbox from the Clip agent ---------- */
+/* Items that another program (the Clip agent) dropped into its own Supabase table, public.inbox (see supabase-inbox.sql).
+   Nothing from there reaches the tracker until you tap Accept, and nothing is overwritten without you seeing both sets of numbers.
+   The list is read with your own login and is never merged into the tracker data by itself.
+   Which items you handled, so the server can be told (and retried if you were offline), is kept in its own browser entry (IN_LS),
+   not in the tracker data. If the table does not exist yet, or you are not signed in, none of this shows and nothing is affected. */
+const IN_LS="sp5-inbox";
+let INBOX=[],inPick={},inBack=0,inBusy=false,inFlushing=false,inQ=[];const inDone=new Set();
+try{const j=JSON.parse(localStorage.getItem(IN_LS));if(j&&Array.isArray(j.q))inQ=j.q.filter(x=>x&&typeof x.id==="string"&&(x.st==="accepted"||x.st==="dismissed")).slice(0,300)}catch(e){}
+const inSave=()=>{try{localStorage.setItem(IN_LS,JSON.stringify({q:inQ}))}catch(e){}};
+const inCut=(s,n)=>String(s==null?"":s).replace(/\s+/g," ").trim().slice(0,n);
+const inNum=(x,max)=>{const v=typeof x==="string"&&x.trim()!==""?+x:x;return typeof v==="number"&&isFinite(v)&&v>=0&&v<=(max||1e10)?v:null};   /* sensible limits: a typo or a bad feed can never put absurd numbers in */
+const inNorm=s=>String(s==null?"":s).normalize("NFKD").replace(/\p{M}+/gu,"").toLowerCase().replace(/[^\p{L}\p{N}]+/gu," ").trim();   /* capitals, accents and punctuation do not matter */
+function inClip(p){
+  let vid=typeof p.vid==="string"?p.vid.trim():"",t0=null;
+  const L=typeof p.link==="string"?parseYT(p.link.trim()):null;
+  if(!/^[A-Za-z0-9_-]{11}$/.test(vid))vid=L?L.vid:"";
+  else if(L&&L.vid===vid)t0=L.t0;
+  if(!vid)return null;
+  return{vid:vid,t0:t0,label:inCut(p.label,140),why:inCut(p.why,300),emotion:inCut(p.emotion,80),on:okKey(p.suggested_on)?p.suggested_on:""};
+}
+function inViews(p){
+  const st=p.stage==="48h"?"48h":p.stage==="7d"?"7d":null,views=inNum(p.views,1e9);
+  if(!st||views==null)return null;
+  let pd=okKey(p.pd)?p.pd:"",pt=typeof p.pt==="string"&&ptOk({pt:p.pt.trim()})?fmt24(parseClock(p.pt.trim())):"";
+  if(!pd&&typeof p.published_at==="string"){const d=new Date(p.published_at);if(!isNaN(d.getTime())){pd=key(d);if(!pt)pt=hhmm(d.getTime())}}
+  const pc=inNum(p.avg_view_pct,100),r=x=>x==null?null:Math.round(x);
+  return{title:inCut(p.title,140),pd:pd,pt:pt,stage:st,views:Math.round(views),p:pc!=null?Math.round(pc*10)/10:null,a:r(inNum(p.avg_view_seconds,3600)),len:r(inNum(p.duration_s,3600)),s:r(inNum(p.subs_gained,1e7))};
+}
+/* which Short is it? by title + publish date; if there is no exact title, by the same date and time; otherwise you pick */
+function inMatch(v,pickId){
+  const day=v.pd?D.logs.filter(l=>ld(l)===v.pd):[],nt=inNorm(v.title),ex=nt?day.filter(l=>inNorm(l.t)===nt):[];
+  let l=null,how="";
+  if(pickId){l=day.find(x=>x.id===pickId)||null;if(l)how="you"}
+  if(!l&&ex.length===1){l=ex[0];how="title"}
+  if(!l&&ex.length>1&&v.pt){const t2=ex.filter(x=>x.pt===v.pt);if(t2.length===1){l=t2[0];how="title"}}
+  if(!l&&!ex.length&&v.pt){const t3=day.filter(x=>x.pt===v.pt);if(t3.length===1){l=t3[0];how="time"}}
+  return{l:l,how:how,day:day};
+}
+/* rows of [name, yours, from Clip, differs] */
+function inRows(v,l){
+  const has=!!l.lg,rows=[];
+  if(v.stage==="48h"){
+    const yv=has?(+l.v||0):null,yp=has&&+l.p>0?+l.p:null,ya=has&&+l.a>0?+l.a:null,yl=has&&+l.len>0?+l.len:null,ys=has?(+l.s||0):null;
+    rows.push(["Views",has?fmt(yv):"–",fmt(v.views),has&&yv!==v.views]);
+    rows.push(["Viewed %",pc1(yp),v.p!=null?pc1(v.p):"–",has&&v.p!=null&&(yp||0)!==v.p]);
+    rows.push(["Avg seconds",ya!=null?ya+"s":"–",v.a!=null?v.a+"s":"–",has&&v.a!=null&&(ya||0)!==v.a]);
+    rows.push(["Length",yl!=null?yl+"s":"–",v.len!=null?v.len+"s":"–",has&&v.len!=null&&(yl||0)!==v.len]);
+    rows.push(["New subs",has?String(ys):"–",v.s!=null?String(v.s):"–",has&&v.s!=null&&ys!==v.s]);
+  }else{
+    const c=l.c7&&!l.c7.skip?l.c7:null;
+    rows.push(["Views at 48 h",has?fmt(+l.v||0):"–","–",false]);
+    rows.push(["Views at 7 days",c?fmt(+c.v||0):"–",fmt(v.views),!!c&&(+c.v||0)!==v.views]);
+    rows.push(["Viewed %",c&&+c.p>0?pc1(+c.p):"–",v.p!=null?pc1(v.p):"–",!!c&&v.p!=null&&(+c.p||0)!==v.p]);
+  }
+  return rows;
+}
+function inUnreadable(it,what){
+  return'<div class="inx"><div class="lgt"><div><b>'+esc(what)+'</b><div class="mu sm">Could not read this item from Clip.</div></div></div><div class="lga"><button class="btn2" data-a="inno" data-id="'+esc(it.id)+'">Dismiss</button></div></div>';
+}
+function inCard(it){
+  const id=esc(it.id);
+  if(it.kind==="clip"){
+    const c=inClip(it.payload);if(!c)return inUnreadable(it,"Clip idea");
+    const have=D.clips.some(x=>x.vid===c.vid);
+    return'<div class="inx"><div class="lgt"><div><b>'+esc(c.label||"Clip idea")+'</b><div class="mu sm">Clip idea'+(c.on?" · for "+fdl(c.on):"")+'</div></div>'+(have?'<span class="pill">Already in your clips</span>':"")+'</div>'
+     +(c.why?'<div class="sm">'+esc(c.why)+'</div>':"")+(c.emotion?'<div class="sm mu">Feeling: '+esc(c.emotion)+'</div>':"")
+     +'<a class="sm" href="'+esc(clipUrl({vid:c.vid,t0:c.t0}))+'" target="_blank" rel="noopener noreferrer">Open on YouTube'+(c.t0?" · starts at "+mmss(c.t0):"")+'</a>'
+     +(have?'<div class="sm mu">You already have this video, so accepting will not add it again.</div>':"")
+     +'<div class="lga"><button class="btn2 pri" data-a="inok" data-id="'+id+'">Accept</button><button class="btn2" data-a="inno" data-id="'+id+'">Dismiss</button></div></div>';
+  }
+  const v=inViews(it.payload);if(!v)return inUnreadable(it,"Numbers");
+  const m=inMatch(v,inPick[it.id]),l=m.l,st=v.stage==="48h"?"48-hour numbers":"7-day check";
+  const when=v.pd?fdl(v.pd)+(v.pt?" · "+fmt12(parseClock(v.pt)):""):"date unknown";
+  const opts=(l?"":'<option value="">Choose a Short…</option>')+m.day.map(x=>'<option value="'+esc(x.id)+'"'+(l&&x.id===l.id?" selected":"")+'>'+esc(inCut(x.t,50)||"Untitled")+(ptOk(x)?" · "+fmt12(parseClock(x.pt)):"")+'</option>').join("");
+  let rows="",btn="Accept",note="",can=!!l;
+  if(l){
+    const rr=inRows(v,l),dif=rr.some(r=>r[3]===true),has=!!l.lg;
+    rows='<div class="tw"><table class="wt cmp inw"><thead><tr><th>Number</th><th>Yours</th><th>From Clip</th></tr></thead><tbody>'+rr.map(r=>'<tr><td>'+esc(r[0])+'</td><td>'+esc(r[1])+'</td><td'+(r[3]===true?' class="dif"':"")+'>'+esc(r[2])+'</td></tr>').join("")+'</tbody></table></div>';
+    if(v.stage==="7d"&&!has){can=false;note="Add this Short's 48-hour numbers first."}
+    else if(dif){btn="Accept and replace mine";note="You already have numbers for this Short. Accepting replaces them with the ones from Clip."}
+    else if(v.stage==="48h"?has:(l.c7&&!l.c7.skip))note="These match what you already have."
+  }
+  return'<div class="inx"><div class="lgt"><div><b>'+st+'</b><div class="mu sm">'+esc(v.title||"Untitled")+" · "+esc(when)+'</div></div></div>'
+   +(m.day.length?'<label class="fld"><span>Short'+(l?(m.how==="title"?" (matched by title and date)":m.how==="time"?" (matched by date and time, not title: check it)":" (chosen by you)"):" (no automatic match)")+'</span><select data-a="inpick" data-id="'+id+'">'+opts+'</select></label>':'<div class="sm mu">No Short is saved for '+esc(v.pd?fdl(v.pd):"that day")+', so there is nothing to attach these to.</div>')
+   +rows+(note?'<div class="sm'+(btn!=="Accept"?"":" mu")+'">'+esc(note)+'</div>':"")
+   +'<div class="lga"><button class="btn2 pri" data-a="inok" data-id="'+id+'"'+(can?"":" disabled")+'>'+btn+'</button><button class="btn2" data-a="inno" data-id="'+id+'">Dismiss</button></div></div>';
+}
+function inList(){return INBOX.filter(x=>!inDone.has(x.id)&&!inQ.some(q=>q.id===x.id))}
+function renderInbox(force){
+  const el=$("inbox");if(!el||VIEW!=="today")return;
+  const a=document.activeElement;if(!force&&a&&a.tagName==="SELECT"&&el.contains(a))return;   /* never redraw under an open dropdown */
+  const list=(SYNC_ON&&AUTH)?inList():[];
+  if(!list.length){el.innerHTML="";return}
+  el.innerHTML='<div class="card inbox"><div class="eyebrow" style="color:var(--ink)">'+list.length+' new item'+(list.length===1?"":"s")+' from Clip</div><p class="sm mu" style="margin-top:4px">Nothing is added to your tracker until you tap Accept.</p>'
+   +list.slice(0,10).map(inCard).join("")+(list.length>10?'<p class="sm mu" style="margin-top:8px">and '+(list.length-10)+' more. They appear as you clear these.</p>':"")+'</div>';
+}
+async function inFlush(){
+  if(inFlushing||!inQ.length||!AUTH)return;
+  inFlushing=true;
+  try{
+    const snap=inQ.slice(),retry=[];
+    for(const x of snap){
+      try{await sb("/rest/v1/inbox?id=eq."+encodeURIComponent(x.id)+"&status=eq.new",{method:"PATCH",headers:{Prefer:"return=minimal"},body:{status:x.st}})}
+      catch(e){if(!e||e.status==null||e.status>=500||e.status===401){x.n=(x.n||0)+1;if(x.n<50)retry.push(x)}}   /* offline or server trouble: try again later. Any other answer: stop retrying */
+    }
+    inQ=inQ.filter(q=>snap.indexOf(q)<0).concat(retry);inSave();   /* keeps anything you handled while this was running */
+  }finally{inFlushing=false}
+}
+async function inboxPull(){
+  if(!SYNC_ON||!AUTH||inBusy||Date.now()<inBack)return;
+  inBusy=true;
+  try{
+    if(!await ensureAuth())return;
+    await inFlush();
+    const rows=await sb("/rest/v1/inbox?select=id,kind,key,payload,created_at&status=eq.new&order=created_at.asc&limit=200");
+    INBOX=(Array.isArray(rows)?rows:[]).filter(r=>r&&typeof r.id==="string"&&(r.kind==="clip"||r.kind==="views")&&r.payload&&typeof r.payload==="object"&&!Array.isArray(r.payload));
+    renderInbox();
+  }catch(e){
+    if(e&&(e.status===404||e.status===400||e.status===403)){INBOX=[];inBack=Date.now()+30*60000;renderInbox()}   /* no inbox table yet (or no access): stay quiet, look again in half an hour (or when the app is reopened) */
+  }finally{inBusy=false}
+}
+function inAcceptClip(it){
+  const c=inClip(it.payload);if(!c)return false;
+  if(D.clips.some(x=>x.vid===c.vid)){toast("You already have that video, so it was not added again");return true}
+  const note=[c.why,c.emotion?"Feeling: "+c.emotion:"",c.on?"For "+fd(c.on):""].filter(Boolean).join(" · ");
+  D.clips.push({id:newId(),vid:c.vid,t0:c.t0,label:c.label,note:note,added:T,used:null,usedOn:null});
+  touchClips();persist();toast("Clip added to your clips");return true;
+}
+function inAcceptViews(it){
+  const v=inViews(it.payload);if(!v)return false;
+  const l=inMatch(v,inPick[it.id]).l;if(!l){toast("Choose which Short these numbers belong to first");return false}
+  if(v.stage==="48h"){
+    const has=!!l.lg;
+    l.v=v.views;l.p=v.p!=null?v.p:(has?l.p:0);l.a=v.a!=null?v.a:(has?l.a:0);l.len=v.len!=null?v.len:(has?l.len:0);l.s=v.s!=null?v.s:(has?l.s:0);
+    l.lg=1;if(!l.lat)l.lat=T;
+    toast(has?"Numbers replaced":"48-hour numbers saved");
+  }else{
+    if(!l.lg){toast("Add this Short's 48-hour numbers first");return false}
+    const old=l.c7&&!l.c7.skip?l.c7:null;
+    l.c7={v:v.views,p:v.p!=null?v.p:(old?old.p:0),n:old&&old.n?old.n:"",d:T};
+    toast("7-day check saved");
+  }
+  touchDay(l.d);persist();return true;
+}
+function inAct(id,accept){
+  const it=INBOX.find(x=>x.id===id);if(!it||inDone.has(id)||inQ.some(q=>q.id===id))return;
+  if(accept&&!(it.kind==="clip"?inAcceptClip(it):inAcceptViews(it)))return;   /* nothing changed: it stays in the list */
+  inDone.add(id);inQ.push({id:id,st:accept?"accepted":"dismissed",n:0});inSave();delete inPick[id];
+  if(accept)render();else renderInbox(true);
+  inFlush();
+}
+
 /* ---------- MORE ---------- */
 function renderSync(){
   const c=$("synccard");if(!c)return;
@@ -1429,6 +1584,7 @@ document.addEventListener("click",e=>{
   else if(a==="settest"){D.test={i:+t.dataset.i,r:D.test.r+1};touchMeta();persist();render();toast("Switched test")}
   else if(a==="reset")confirmTap(t,"Tap again to set Day 1 to today",()=>{D.start=T;touchMeta();persist();render();toast("Plan Day 1 is today")});
   else if(a==="export")doExport();
+  else if(a==="inok"||a==="inno")inAct(id,a==="inok");
   else if(a==="celclose")celClose();
   else if(a==="msgo"){$("cel").hidden=true;openMsheet()}
   else if(a==="mopen")openMsheet();
@@ -1503,6 +1659,7 @@ document.addEventListener("change",e=>{
   const t=e.target;if(!t.dataset)return;
   if(t.dataset.a==="habk"){const r=rec(t.dataset.k);r.h=r.h||{};if(t.checked)r.h[t.dataset.id]=1;else delete r.h[t.dataset.id];touchDay(t.dataset.k);persist();render()}
   else if(t.dataset.a==="task"){setTask(t.dataset.k,+t.dataset.i,t.checked);render()}
+  else if(t.dataset.a==="inpick"){inPick[t.dataset.id]=t.value;renderInbox(true)}
   else if(t.dataset.a==="hab"){const r=rec(T);r.h=r.h||{};if(t.checked)r.h[t.dataset.id]=1;else delete r.h[t.dataset.id];touchDay(T);persist();render()}
 });
 let dbT={};
