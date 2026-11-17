@@ -12,8 +12,9 @@ const ad=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
 const addk=(k,n)=>key(ad(fk(k),n));
 const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const DOW=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-const fd=k=>{const d=fk(k);return MON[d.getMonth()]+" "+d.getDate()};
-const fdl=k=>{const d=fk(k);return DOW[d.getDay()].slice(0,3)+" "+d.getDate()+" "+MON[d.getMonth()]};
+const validKey=k=>typeof k==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(k);
+const fd=k=>{if(!validKey(k))return"";const d=fk(k);return MON[d.getMonth()]+" "+d.getDate()};          /* a missing or broken date shows as nothing instead of crashing the screen */
+const fdl=k=>{if(!validKey(k))return"";const d=fk(k);return DOW[d.getDay()].slice(0,3)+" "+d.getDate()+" "+MON[d.getMonth()]};
 const fmt=n=>Math.round(n).toLocaleString("en-US");
 const mondayOf=d=>ad(d,-((d.getDay()+6)%7));
 const avg=(a,f)=>a.length?a.reduce((s,l)=>s+(+l[f]||0),0)/a.length:0;
@@ -53,6 +54,9 @@ function norm(d){
   if(!d.cats||!d.cats.length)d.cats=DEFAULT_CATS.map(c=>({id:c[0],n:c[1]}));
   d.goal=Object.assign({h:3},d.goal||{});
   Object.keys(d.days).forEach(k=>{const r=d.days[k];if(!r.c||r.c.length!==5)r.c=[0,0,0,0,0];if(!r.x)r.x=[]});
+  const numOk=x=>typeof x==="string"&&x.trim()!==""&&isFinite(+x)?+x:0;   /* numbers that arrive as text or junk (an odd import) become real numbers or 0, so charts never show NaN */
+  d.logs.forEach(l=>{["v","p","a","len","s"].forEach(f=>{const x=l[f];if(x!=null&&(typeof x!=="number"||!isFinite(x)))l[f]=numOk(x)});
+    if(l.c7&&typeof l.c7==="object"&&!l.c7.skip)["v","p"].forEach(f=>{const x=l.c7[f];if(x!=null&&(typeof x!=="number"||!isFinite(x)))l.c7[f]=numOk(x)})});
   d.logs.forEach((l,i)=>{if(!l.id)l.id="o"+i;if(l.tr==null){l.tr=Math.floor(i/5);l.ti=l.tr%5}if(l.lg==null){l.lg=l.v!=null?1:0;if(l.lg)l.c7={skip:1}}});
   if(!d.test){const n=d.logs.length;d.test={i:Math.floor(n/5)%5,r:Math.floor(n/5)}}
   return d;
@@ -63,7 +67,8 @@ let NOW=new Date(),T=key(NOW),dow=NOW.getDay();
 let emAsk=false,VIEW="today",progSeg="stats",selDay=T,selPt=null,selSes=T,editShort=null,numId=null,c7Id=null,editClip=null,editSes=null,clipIdx=0,pendingRender=false,finEnd=null;
 let WC=null,WCt=0;   /* derived-work cache, see workCache() */
 let msSeen=null,msQuiet=false,msPend=false,msT=null,msTotal=0,syncT0=0;   /* milestone celebrations, see msCheck() */
-const persist=()=>{WC=null;try{localStorage.setItem(LS,JSON.stringify(D))}catch(e){}msSoon()};
+let saveWarned=false;
+const persist=()=>{WC=null;try{localStorage.setItem(LS,JSON.stringify(D))}catch(e){if(!saveWarned){saveWarned=true;try{toast("Could not save on this device. Save a backup file from More now.")}catch(x){}}}msSoon()};
 
 /* ---------- derived: streak, shorts, clips ---------- */
 const dayN=()=>Math.max(1,Math.round((new Date(NOW.getFullYear(),NOW.getMonth(),NOW.getDate())-fk(D.start))/864e5)+1);
@@ -675,6 +680,7 @@ function renderToday(){
   let ring='<svg class="ring" viewBox="0 0 120 120" aria-hidden="true">';
   ids.forEach((id,j)=>{ring+='<circle class="'+(tdone(T,id)?"on":"tr")+'" cx="60" cy="60" r="49" stroke-dasharray="'+seg.toFixed(1)+' '+(C-seg).toFixed(1)+'" transform="rotate('+(-90+j*(360/tot)+(4.5/C*360)).toFixed(2)+' 60 60)"/>'});
   $("ringw").innerHTML=ring+'</svg><div class="ringc"><b class="num">'+n+'</b><span>of '+tot+'</span></div>';
+  $("nnh").textContent="Your "+tot+" non-negotiables";
   $("dayn").textContent="Day "+dayN()+(dayN()<=365?" of 365":"");
   $("lvn").textContent="Level "+L+" · "+lvName(L);
   $("xpf").style.width=Math.min(100,(xp-lo)/(hi-lo)*100)+"%";
@@ -938,7 +944,7 @@ function milestoneList(){
    {g:S,n:"7-day streak",d:"Seven days in a row",p:bs,t:7},
    {g:S,n:"Perfect week",d:"Seven full days in one week",p:bestFull,t:7},
    {g:S,n:"30-day streak",d:"A full month in a row",p:bs,t:30},
-   {g:S,n:"30 full days",d:"Thirty days with all 5 tasks done",p:fullDays,t:30},
+   {g:S,n:"30 full days",d:"Thirty days with every daily task done",p:fullDays,t:30},
    {g:S,n:"30-day habit streak",d:"Keep any one habit going for 30 scheduled days",p:habBestAll,t:30},
    {g:S,n:"60-day streak",d:"Two months in a row",p:bs,t:60},
    {g:S,n:"100 days kept",d:"Hundred days at 3+ tasks",p:keptDays,t:100},
@@ -1810,6 +1816,11 @@ window.addEventListener("hashchange",()=>{try{const h=location.hash.slice(1);if(
 function newDayCheck(){if(key(new Date())!==T){NOW=new Date();T=key(NOW);dow=NOW.getDay();selDay=T;selSes=T;selWeek=null;clearMake();clearSes();render()}}
 document.addEventListener("visibilitychange",()=>{if(!document.hidden){newDayCheck();syncNow();tickTimer();msSoon(900)}});
 window.addEventListener("online",()=>syncNow());
+/* The tracker open in two tabs: when the other tab saves, this one picks that up, so a stale tab can never write old data over newer data. */
+window.addEventListener("storage",e=>{
+  if(e.key!==LS||!e.newValue)return;
+  try{const nd=norm(JSON.parse(e.newValue));if(nd&&typeof nd==="object"){D=nd;WC=null;softRender()}}catch(x){}
+});
 window.addEventListener("focus",newDayCheck);
 setInterval(newDayCheck,30000);
 const uiSig=()=>[cnt(T),xpOf(T),dueNums().length,due7().length,liveCount(T)].join("|");
