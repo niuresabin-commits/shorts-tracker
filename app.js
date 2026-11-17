@@ -388,7 +388,7 @@ function celOpen(label){
   cel.setAttribute("aria-label",label);cel.hidden=false;$("celb").focus();
 }
 function celClose(){const c=$("cel");if(c.hidden)return;c.hidden=true;if(msPend)msSoon(350)}
-document.addEventListener("keydown",e=>{if(e.key==="Escape"){celClose();if(!$("msheet").hidden)closeMsheet()}});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){celClose();if(!$("msheet").hidden)closeMsheet();if(!$("insheet").hidden)closeInbox()}});
 
 /* ---------- clips ---------- */
 function parseYT(s){
@@ -663,7 +663,7 @@ function renderHead(){
   $("fl").textContent=curStreak();
   $("hs").classList.toggle("off",!kept(T));
   $("hs").setAttribute("aria-label","Current streak: "+curStreak()+" days");
-  const n=dueNums().length+due7().length,b=$("bdgn");b.hidden=!n;b.textContent=n;
+  const n=dueNums().length+due7().length,b=$("bdgn");b.hidden=!n;b.textContent=n;inBadge(inCount());
 }
 function dueRows(){
   const dn=dueNums(),d7=due7();if(!dn.length&&!d7.length)return"";
@@ -983,7 +983,7 @@ function msSave(){try{localStorage.setItem(MS_LS,JSON.stringify({seen:Array.from
 function msEarned(){try{const L=milestoneList();msTotal=L.length;return L.filter(msOk)}catch(e){return null}}
 function msRebase(keep){const e=msEarned();if(!e)return;msSeen=new Set((keep&&msSeen?Array.from(msSeen):[]).concat(e.map(m=>m.n)));msSave()}   /* everything achieved so far counts as already celebrated */
 function msSoon(ms){clearTimeout(msT);msT=setTimeout(msCheck,ms==null?600:ms)}
-function msBusy(){const a=document.activeElement,typing=!!a&&(a.tagName==="TEXTAREA"||a.tagName==="SELECT"||(a.tagName==="INPUT"&&!/^(checkbox|radio|button|submit|file|range)$/i.test(a.type||"")));return document.hidden||!$("cel").hidden||!$("msheet").hidden||typing}
+function msBusy(){const a=document.activeElement,typing=!!a&&(a.tagName==="TEXTAREA"||a.tagName==="SELECT"||(a.tagName==="INPUT"&&!/^(checkbox|radio|button|submit|file|range)$/i.test(a.type||"")));return document.hidden||!$("cel").hidden||!$("msheet").hidden||!$("insheet").hidden||typing}
 function msCheck(){
   if(syncing&&Date.now()-syncT0<8000){msSoon(700);return}   /* wait for a sync in progress, so half-loaded data is never judged */
   msMerge();
@@ -1442,13 +1442,48 @@ function inCard(it){
    +'<div class="lga"><button class="btn2 pri" data-a="inok" data-id="'+id+'"'+(can?"":" disabled")+'>'+btn+'</button><button class="btn2" data-a="inno" data-id="'+id+'">Dismiss</button></div></div>';
 }
 function inList(){return INBOX.filter(x=>!inDone.has(x.id)&&!inQ.some(q=>q.id===x.id))}
+const IN_ENV='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 8 8 6 8-6"/></svg>';
+let inTab="clip",inSearch="",inLimit=15,inSel=null;
+const inCount=()=>(SYNC_ON&&AUTH)?inList().length:0;
+function inBadge(n){const b=$("bdgc");if(!b)return;b.hidden=!n;b.textContent=n>99?"99+":String(n)}
+/* Today and Clips only get one slim line. The items themselves live in the Mailbox screen. */
 function renderInbox(force){
-  const el=$("inbox");if(!el||VIEW!=="today")return;
-  const a=document.activeElement;if(!force&&a&&a.tagName==="SELECT"&&el.contains(a))return;   /* never redraw under an open dropdown */
-  const list=(SYNC_ON&&AUTH)?inList():[];
-  if(!list.length){el.innerHTML="";return}
-  el.innerHTML='<div class="card inbox"><div class="eyebrow" style="color:var(--ink)">'+list.length+' new item'+(list.length===1?"":"s")+' from Clip</div><p class="sm mu" style="margin-top:4px">Nothing is added to your tracker until you tap Accept.</p>'
-   +list.slice(0,10).map(inCard).join("")+(list.length>10?'<p class="sm mu" style="margin-top:8px">and '+(list.length-10)+' more. They appear as you clear these.</p>':"")+'</div>';
+  const n=inCount(),html=n?'<button class="card inmail" data-a="inopen"><span class="inic">'+IN_ENV+'</span><span class="int"><b>Mailbox</b><span class="mu sm">'+n+' new from Clip</span></span><span class="inbtn">Open</span></button>':"";
+  ["inbox","inbox2"].forEach(id=>{const el=$(id);if(el&&el.innerHTML!==html)el.innerHTML=html});
+  inBadge(n);
+  if(!$("insheet").hidden)renderMailbox(force);
+}
+function inClipRow(it){
+  const c=inClip(it.payload);if(!c)return inUnreadable(it,"Clip idea");
+  const id=esc(it.id),open=inSel===it.id,have=D.clips.some(x=>x.vid===c.vid);
+  return'<div class="inr'+(open?" open":"")+'"><div class="inm">'+clThumb(c)
+   +'<button class="inh" data-a="inrow" data-id="'+id+'" aria-expanded="'+open+'"><b>'+esc(c.label||"Clip idea")+'</b>'+(c.why?'<span class="mu sm inwhy">'+esc(c.why)+'</span>':"")+(have?'<span class="pill">Already in your clips</span>':"")+'</button></div>'
+   +(open?'<div class="inx2">'+(c.why?'<div class="sm">'+esc(c.why)+'</div>':"")+(c.emotion?'<div class="sm mu">Feeling: '+esc(c.emotion)+'</div>':"")+(c.on?'<div class="sm mu">For '+fdl(c.on)+'</div>':"")+(have?'<div class="sm mu">You already have this video, so accepting will not add it again.</div>':"")+'</div>':"")
+   +'<div class="ina"><button class="btn2 pri" data-a="inok" data-id="'+id+'">Accept</button><button class="btn2" data-a="inno" data-id="'+id+'">Dismiss</button><a class="link" href="'+esc(clipUrl({vid:c.vid,t0:c.t0}))+'" target="_blank" rel="noopener noreferrer">Open on YouTube</a></div></div>';
+}
+function renderMailbox(force){
+  const sh=$("insheet");if(sh.hidden)return;
+  const a=document.activeElement;if(!force&&a&&a.tagName==="SELECT"&&sh.contains(a))return;   /* never redraw under an open dropdown */
+  const all=(SYNC_ON&&AUTH)?inList():[],words=inNorm(inSearch).split(" ").filter(Boolean);
+  const hit=it=>{if(!words.length)return true;let h="";if(it.kind==="clip"){const c=inClip(it.payload);if(c)h=[c.label,c.why,c.emotion,c.vid].join(" ")}else{const v=inViews(it.payload);if(v)h=[v.title,v.pd].join(" ")}h=inNorm(h);return words.every(w=>h.indexOf(w)>=0)};
+  const clips=all.filter(x=>x.kind==="clip"&&hit(x)),nums=all.filter(x=>x.kind==="views"&&hit(x));
+  if(!words.length&&((inTab==="clip"&&!clips.length&&nums.length)||(inTab==="num"&&!nums.length&&clips.length)))inTab=inTab==="clip"?"num":"clip";   /* never leave you on an empty tab while the other one has items */
+  $("incnt").textContent=all.length?all.length+" new":"Nothing new";
+  $("inseg").innerHTML=[["clip","Clips",clips.length],["num","Numbers",nums.length]].map(t=>'<button role="tab" aria-selected="'+(inTab===t[0])+'" data-a="intab" data-s="'+t[0]+'"'+(inTab===t[0]?' class="on"':"")+'>'+t[1]+' <span class="num">'+t[2]+'</span></button>').join("");
+  const cur=inTab==="clip"?clips:nums,shown=cur.slice(0,inLimit);
+  let h="";
+  if(!all.length)h='<p class="mu" style="padding:8px 0">Nothing new from Clip. When it finds a clip or has numbers for a Short, they show up here.</p>';
+  else if(!cur.length)h='<p class="mu" style="padding:8px 0">'+(words.length?"Nothing matches “"+esc(inSearch.trim())+"”.":inTab==="clip"?"No clip ideas waiting.":"No numbers waiting.")+'</p>';
+  else h=(cur.length>1?'<div class="inbar"><span class="mu sm">'+cur.length+' waiting</span><button class="link bad" data-a="inallno">Dismiss all '+cur.length+'</button></div>':"")
+    +'<div class="inl">'+shown.map(it=>it.kind==="clip"?inClipRow(it):inCard(it)).join("")+'</div>'
+    +(cur.length>shown.length?'<div class="shmore"><button class="btn2" data-a="inmore">Show '+Math.min(15,cur.length-shown.length)+' more · '+(cur.length-shown.length)+' left</button></div>':"");
+  $("inb").innerHTML=h;
+}
+function openInbox(){inSel=null;inLimit=15;$("insheet").hidden=false;document.documentElement.style.overflow="hidden";renderMailbox(true);$("inclose").focus()}
+function closeInbox(){$("insheet").hidden=true;document.documentElement.style.overflow="";if(msPend)msSoon(350)}
+function inDismissMany(list){
+  list.forEach(it=>{if(!inDone.has(it.id)&&!inQ.some(q=>q.id===it.id)){inDone.add(it.id);inQ.push({id:it.id,st:"dismissed",n:0});delete inPick[it.id]}});
+  inSave();renderInbox(true);inFlush();
 }
 async function inFlush(){
   if(inFlushing||!inQ.length||!AUTH)return;
@@ -1502,7 +1537,8 @@ function inAct(id,accept){
   const it=INBOX.find(x=>x.id===id);if(!it||inDone.has(id)||inQ.some(q=>q.id===id))return;
   if(accept&&!(it.kind==="clip"?inAcceptClip(it):inAcceptViews(it)))return;   /* nothing changed: it stays in the list */
   inDone.add(id);inQ.push({id:id,st:accept?"accepted":"dismissed",n:0});inSave();delete inPick[id];
-  if(accept)render();else renderInbox(true);
+  if(accept)render();
+  renderInbox(true);
   inFlush();
 }
 
@@ -1623,6 +1659,13 @@ document.addEventListener("click",e=>{
   else if(a==="reset")confirmTap(t,"Tap again to set Day 1 to today",()=>{D.start=T;touchMeta();persist();render();toast("Plan Day 1 is today")});
   else if(a==="export")doExport();
   else if(a==="inok"||a==="inno")inAct(id,a==="inok");
+  else if(a==="inopen")openInbox();
+  else if(a==="inclose")closeInbox();
+  else if(a==="intab"){inTab=t.dataset.s;inLimit=15;inSel=null;renderMailbox(true)}
+  else if(a==="inrow"){inSel=inSel===id?null:id;renderMailbox(true)}
+  else if(a==="inmore"){inLimit+=15;renderMailbox(true)}
+  else if(a==="inallno"){const mine=inList().filter(x=>(inTab==="clip")===(x.kind==="clip")&&(()=>{const w=inNorm(inSearch).split(" ").filter(Boolean);if(!w.length)return true;let h="";if(x.kind==="clip"){const c=inClip(x.payload);if(c)h=[c.label,c.why,c.emotion,c.vid].join(" ")}else{const v=inViews(x.payload);if(v)h=[v.title,v.pd].join(" ")}h=inNorm(h);return w.every(q=>h.indexOf(q)>=0)})());
+    confirmTap(t,"Tap again to dismiss all "+mine.length,()=>inDismissMany(mine))}
   else if(a==="celclose")celClose();
   else if(a==="msgo"){$("cel").hidden=true;openMsheet()}
   else if(a==="mopen")openMsheet();
@@ -1720,6 +1763,7 @@ document.addEventListener("input",e=>{
   });
 });
 ["n4","n5"].forEach(i=>$(i).addEventListener("input",npv));
+$("inq").addEventListener("input",()=>{inSearch=$("inq").value;inLimit=15;inSel=null;renderMailbox(true)});
 $("cq").addEventListener("input",()=>{clQ=$("cq").value;clLimit=CL_PAGE;clSel=null;renderClips()});
 document.addEventListener("error",e=>{const t=e.target;if(t&&t.tagName==="IMG"&&t.parentNode&&t.parentNode.className==="cth")t.style.display="none"},true);   /* thumbnail not available (offline): the grey box stays */
 $("mf").addEventListener("submit",saveShort);

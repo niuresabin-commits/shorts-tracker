@@ -160,6 +160,7 @@
   <section id="v-clips" class="view">
     <h2 class="sec">Clip library</h2>
     <p class="lead">Paste a YouTube link the moment you find a good clip. When you make a Short from it, it is marked used for you, so you never reuse one by accident.</p>
+    <div id="inbox2"></div>
     <div class="card form">
       <label class="fld"><span>YouTube link</span><input id="c1" placeholder="https://youtu.be/..." inputmode="url" autocapitalize="off" autocorrect="off"></label>
       <label class="fld"><span>What is it?</span><input id="c2" placeholder="Movie and scene, e.g. Joker stairs"></label>
@@ -443,7 +444,7 @@
 <nav class="tabs" id="nav"><div class="in">
   <button data-a="tab" data-t="today" class="on"><svg class="ic"><use href="#i-today"/></svg>Today</button>
   <button data-a="tab" data-t="time"><svg class="ic"><use href="#i-time"/></svg>Time</button>
-  <button data-a="tab" data-t="clips"><svg class="ic"><use href="#i-clip"/></svg>Clips</button>
+  <button data-a="tab" data-t="clips"><svg class="ic"><use href="#i-clip"/></svg>Clips<span class="bdgn" id="bdgc" hidden></span></button>
   <button data-a="tab" data-t="shorts"><svg class="ic"><use href="#i-log"/></svg>Shorts<span class="bdgn" id="bdgn" hidden></span></button>
   <button data-a="tab" data-t="prog"><svg class="ic"><use href="#i-prog"/></svg>Progress</button>
   <button data-a="tab" data-t="more"><svg class="ic"><use href="#i-more"/></svg>More</button>
@@ -455,6 +456,13 @@
   <div class="sheeth"><div><div class="eyebrow">Milestones</div><b id="mscnt" class="num"></b></div><button class="btn2" id="msclose" data-a="mclose">Close</button></div>
   <div class="seg seg3" id="mseg"><button data-a="mfilter" data-f="all" class="on">All</button><button data-a="mfilter" data-f="done">Achieved</button><button data-a="mfilter" data-f="todo">To go</button></div>
   <div class="sheetb" id="msb"></div>
+</div>
+
+<div class="sheet" id="insheet" hidden role="dialog" aria-modal="true" aria-label="Mailbox from Clip">
+  <div class="sheeth"><div><div class="eyebrow">Mailbox from Clip</div><b id="incnt" class="num"></b></div><button class="btn2" id="inclose" data-a="inclose">Close</button></div>
+  <div class="seg" id="inseg" role="tablist"></div>
+  <input id="inq" type="search" placeholder="Search the mailbox" aria-label="Search the mailbox" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+  <div class="sheetb" id="inb"></div>
 </div>
 
 <script src="config.js"></script>

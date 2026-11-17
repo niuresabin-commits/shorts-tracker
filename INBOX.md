@@ -1,11 +1,11 @@
 # Clip agent inbox
 
 A separate, write-only drop box that another program (the "Clip" agent) uses to hand things to the tracker.
-Nothing in it reaches the tracker until you tap **Accept** on the card that appears on **Today**.
+Nothing in it reaches the tracker until you tap **Accept** in the Mailbox.
 
 - Table: `public.inbox` (created by `supabase-inbox.sql`; your tracker data table `docs` is not touched)
 - The agent has **its own Supabase login**. That login can only **add new rows** to the inbox. It cannot read, change or delete anything, and it is locked out of `docs`.
-- In the tracker: Today shows **"N new items from Clip"** with **Accept** and **Dismiss** on every item.
+- In the tracker: Today and Clips show one slim **Mailbox** line (the Clips tab icon shows the count). Tap it to open the Mailbox screen with **Accept** and **Dismiss** on every item.
 
 ## One-time setup (you)
 

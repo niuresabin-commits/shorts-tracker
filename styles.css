@@ -386,11 +386,33 @@ details ul{margin:0;padding-left:20px}
 .msalso svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 @media (prefers-reduced-motion:reduce){.mscup{animation:none}}
 
-/* inbox from the Clip agent */
-.inbox{display:flex;flex-direction:column;gap:2px}
-.inx{display:flex;flex-direction:column;gap:9px;padding:14px 0;border-top:1px solid var(--ln)}
-.inbox>.sm+.inx{border-top:0}
-.inx:last-child{padding-bottom:2px}
+/* inbox from the Clip agent: one slim row on Today / Clips, the items live in the Mailbox screen */
+.inmail{display:flex;align-items:center;gap:12px;width:100%;text-align:left;color:inherit;font:inherit;padding:12px 14px}
+.inic{flex:none;width:36px;height:36px;border-radius:11px;background:var(--acs);display:grid;place-items:center}
+.inic svg{width:20px;height:20px;stroke:var(--ac);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.int{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.int b{font-size:15px}
+.inbtn{flex:none;background:var(--ac);color:var(--on-ac);font-weight:700;font-size:13px;border-radius:10px;padding:8px 14px}
+#insheet .sheetb{padding-top:2px}
+.inbar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:0 2px 6px}
+.inbar .link{padding:4px 0}
+.inl{background:var(--sf);border:1px solid var(--ln);border-radius:16px;padding:2px 14px}
+.inr{border-top:1px solid var(--ln);padding:12px 0 12px;display:flex;flex-direction:column;gap:10px}
+.inr:first-child{border-top:0}
+.inm{display:flex;gap:10px;align-items:flex-start}
+.inm .cth{margin-top:2px}
+.inh{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;background:none;border:0;padding:0;color:inherit;font:inherit}
+.inh b{font-size:15px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.inwhy{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.inr.open .inh b{-webkit-line-clamp:unset}
+.inr.open .inwhy{display:none}
+.inx2{display:flex;flex-direction:column;gap:4px}
+.ina{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.ina .btn2{padding:8px 16px;font-size:14px}
+.ina .link{font-size:13px;padding:4px 2px}
+.inl .inx{padding:14px 0}
+.inl .inx:first-child{border-top:0}
+.inx{display:flex;flex-direction:column;gap:9px;border-top:1px solid var(--ln)}
 .inx .fld select{font-size:15px}
 .inx a{color:var(--ac);font-weight:600;text-decoration:none;align-self:flex-start}
 .wt.inw td.dif{color:var(--warm);font-weight:700}
@@ -456,5 +478,5 @@ nav button{position:relative;display:flex;flex-direction:column;align-items:cent
 nav button.on{color:var(--ac);background:var(--acs)}
 .bdgn{position:absolute;top:2px;left:calc(50% + 4px);min-width:17px;height:17px;border-radius:9px;background:var(--warm);color:#111;font:700 10px/17px var(--f-b);padding:0 5px;text-align:center}
 .ic{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translate(-50%,12px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:30;max-width:calc(100% - 32px);text-align:center}
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translate(-50%,12px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:60;max-width:calc(100% - 32px);text-align:center}
 .toast.on{opacity:1;transform:translate(-50%,0)}

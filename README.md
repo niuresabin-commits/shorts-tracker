@@ -36,7 +36,7 @@ The anon key is designed to be public. Row-level security (in `supabase.sql`) ma
 
 ## Clip agent inbox (optional)
 
-A separate drop box another program can add clip ideas and view numbers to. They show on **Today** as a card with **Accept / Dismiss**, and nothing reaches your data until you accept. Setup and the data format are in `INBOX.md`; the database part is `supabase-inbox.sql`.
+A separate drop box another program can add clip ideas and view numbers to. Today and Clips show one slim **Mailbox** line (and the Clips tab icon carries the count). Tap it to open the Mailbox screen: Clips and Numbers tabs, search, compact rows with **Accept / Dismiss**, and **Dismiss all**. Nothing reaches your data until you accept. Setup and the data format are in `INBOX.md`; the database part is `supabase-inbox.sql`.
 
 ## How data is stored
 
