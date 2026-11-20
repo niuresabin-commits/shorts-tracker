@@ -223,7 +223,7 @@ function flexRow(h){
 }
 function flexHabitRows(k){
   const hs=D.habits.filter(habFlex);if(!hs.length)return"";
-  return'<div class="rvh">Habits</div>'+hs.map(h=>'<label class="task c'+(habDone(h,k)?" done":"")+'"><input type="checkbox" data-a="habk" data-k="'+k+'" data-id="'+esc(h.id)+'"'+(habDone(h,k)?" checked":"")+'><span class="tx"><b>'+esc(h.n)+'</b></span></label>').join("");
+  return'<div class="rvh">Habits</div>'+hs.map(h=>'<label class="task c'+(habDone(h,k)?" done":"")+'"><input type="checkbox" autocomplete="off" data-a="habk" data-k="'+k+'" data-id="'+esc(h.id)+'"'+(habDone(h,k)?" checked":"")+'><span class="tx"><b>'+esc(h.n)+'</b></span></label>').join("");
 }
 
 /* ---------- sync ---------- */
@@ -323,7 +323,7 @@ function softRender(){const a=document.activeElement;if(a&&/^(INPUT|TEXTAREA|SEL
 document.addEventListener("focusout",()=>{if(pendingRender){pendingRender=false;setTimeout(render,0)}if(msPend)msSoon()});
 function taskRow(k,i,title,sub,compact){
   const man=tget(D.days[k],i),der=derivedDone(k,i),dn=man||der;
-  return'<label class="task'+(dn?" done":"")+(compact?" c":"")+'"><input type="checkbox" data-a="task" data-k="'+k+'" data-i="'+i+'"'+(dn?" checked":"")+(der?" disabled":"")+'><span class="tx"><b>'+esc(title)+'</b>'+((sub||der)?'<small>'+esc((sub||"")+(der?(sub?" ":"")+"Counted automatically.":""))+'</small>':"")+'</span></label>';
+  return'<label class="task'+(dn?" done":"")+(compact?" c":"")+'"><input type="checkbox" autocomplete="off" data-a="task" data-k="'+k+'" data-i="'+i+'"'+(dn?" checked":"")+(der?" disabled":"")+'><span class="tx"><b>'+esc(title)+'</b>'+((sub||der)?'<small>'+esc((sub||"")+(der?(sub?" ":"")+"Counted automatically.":""))+'</small>':"")+'</span></label>';
 }
 function setVal(id,v){const e=$(id);if(document.activeElement!==e)e.value=v==null?"":v}
 function rec(k){const r=D.days[k]||(D.days[k]={c:[0,0,0,0,0],x:[]});return r}
@@ -647,7 +647,7 @@ function renderHabitsToday(){
   if(!D.habits.length){$("hab").innerHTML='<h2 class="sec">Habits</h2><div class="card"><p class="sm mu">Add your own habits, like gym or reading, each with its own streak.</p><button class="btn2" style="margin-top:10px" data-a="tab" data-t="more">Add habits</button></div>';return}
   const fixed=D.habits.filter(h=>!habFlex(h)&&habSched(h,T)&&h.added<=T),flex=D.habits.filter(habFlex);
   const rows=fixed.map(h=>{const dn=habDone(h,T),st=habStreak(h);
-    return'<label class="task'+(dn?" done":"")+' c"><input type="checkbox" data-a="hab" data-id="'+esc(h.id)+'"'+(dn?" checked":"")+'><span class="tx"><b>'+esc(h.n)+'</b></span><span class="hs"><svg viewBox="0 0 24 24"><use href="#i-flame"/></svg>'+st+'</span></label>'}).join("")+flex.map(flexRow).join("");
+    return'<label class="task'+(dn?" done":"")+' c"><input type="checkbox" autocomplete="off" data-a="hab" data-id="'+esc(h.id)+'"'+(dn?" checked":"")+'><span class="tx"><b>'+esc(h.n)+'</b></span><span class="hs"><svg viewBox="0 0 24 24"><use href="#i-flame"/></svg>'+st+'</span></label>'}).join("")+flex.map(flexRow).join("");
   $("hab").innerHTML='<h2 class="sec">Habits</h2><div class="card tasks">'+(rows||'<p class="sm mu" style="padding:12px 0">No habits scheduled today.</p>')+'</div>';
 }
 function renderHabitStats(){
@@ -1585,7 +1585,13 @@ $("wl").innerHTML="<p class='mu'>Search these exact phrases on YouTube and pick 
 
 /* ---------- render + nav ---------- */
 const VIEWS={today:renderToday,time:renderTime,clips:renderClips,shorts:renderShorts,prog:renderProg,more:renderMore};
-function render(){renderHead();VIEWS[VIEW]()}
+/* After a tab is discarded and reopened, Chrome can put old tick marks back on the new boxes. Every box and search field is forced back to what your data says. */
+function syncChecks(){
+  document.querySelectorAll('input[type=checkbox]').forEach(i=>{if(i.checked!==i.defaultChecked)i.checked=i.defaultChecked});
+  [["cq",clQ],["inq",inSearch]].forEach(a=>{const el=$(a[0]);if(el&&el!==document.activeElement&&el.value!==a[1])el.value=a[1]});
+  ["shf","sht"].forEach(id=>{const el=$(id);if(el&&el!==document.activeElement&&el.value!==(id==="shf"?shFrom:shTo))el.value=id==="shf"?shFrom:shTo});
+}
+function render(){renderHead();VIEWS[VIEW]();syncChecks()}
 function go(t,noHash){
   if(t==="year"){progSeg="year";t="prog"}else if(t==="stats"){progSeg="stats";t="prog"}else if(t==="weeks"){progSeg="weeks";t="prog"}
   if(t==="plan")t="more";if(t==="log")t="shorts";
@@ -1814,8 +1820,9 @@ $("imp").addEventListener("change",e=>{
 })();
 window.addEventListener("hashchange",()=>{try{const h=location.hash.slice(1);if(h&&h!==VIEW)go(h,true)}catch(e){}});
 function newDayCheck(){if(key(new Date())!==T){NOW=new Date();T=key(NOW);dow=NOW.getDay();selDay=T;selSes=T;selWeek=null;clearMake();clearSes();render()}}
-document.addEventListener("visibilitychange",()=>{if(!document.hidden){newDayCheck();syncNow();tickTimer();msSoon(900)}});
+document.addEventListener("visibilitychange",()=>{if(!document.hidden){newDayCheck();syncNow();tickTimer();msSoon(900);syncChecks()}});
 window.addEventListener("online",()=>syncNow());
+["load","pageshow"].forEach(ev=>window.addEventListener(ev,()=>{syncChecks();setTimeout(syncChecks,250);setTimeout(syncChecks,1000)}));
 /* The tracker open in two tabs: when the other tab saves, this one picks that up, so a stale tab can never write old data over newer data. */
 window.addEventListener("storage",e=>{
   if(e.key!==LS||!e.newValue)return;
